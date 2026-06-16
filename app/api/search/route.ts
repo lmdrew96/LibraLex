@@ -131,34 +131,17 @@ const fetchFallbackCover = async (book: BookSearchResult): Promise<string | null
   return null
 }
 
-export async function GET(request: Request): Promise<NextResponse> {
-  const query = new URL(request.url).searchParams.get("q")?.trim() ?? ""
-  if (query.length < 2) {
-    return NextResponse.json({ results: [] satisfies BookSearchResult[] })
-  }
+// Fetch + normalize an Open Library search.json URL. Throws on a non-OK response
+// so callers can map failures to a status code.
+const fetchOpenLibrary = async (olUrl: string): Promise<BookSearchResult[]> => {
+  const res = await fetchWithTimeout(olUrl, OPEN_LIBRARY_TIMEOUT_MS)
+  if (!res.ok) throw new Error(`Open Library responded ${res.status}`)
+  const data = (await res.json()) as { docs?: OpenLibraryDoc[] }
+  return (data.docs ?? []).map(mapDoc).filter((b): b is BookSearchResult => b !== null)
+}
 
-  let results: BookSearchResult[]
-  try {
-    const res = await fetchWithTimeout(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10&fields=${OPEN_LIBRARY_FIELDS}`,
-      OPEN_LIBRARY_TIMEOUT_MS,
-    )
-    if (!res.ok) {
-      return NextResponse.json(
-        { results: [], error: "Search is unavailable right now." },
-        { status: 502 },
-      )
-    }
-    const data = (await res.json()) as { docs?: OpenLibraryDoc[] }
-    results = (data.docs ?? []).map(mapDoc).filter((b): b is BookSearchResult => b !== null)
-  } catch {
-    return NextResponse.json(
-      { results: [], error: "Search timed out. Try again." },
-      { status: 504 },
-    )
-  }
-
-  // Backfill covers Open Library lacks, in parallel, capped and fault-tolerant.
+// Backfill covers Open Library lacks, in parallel, capped and fault-tolerant.
+const backfillCovers = async (results: BookSearchResult[]): Promise<void> => {
   const needsCover = results.filter((b) => b.coverId === undefined)
   await Promise.allSettled(
     needsCover.slice(0, MAX_COVER_BACKFILLS).map(async (book) => {
@@ -166,6 +149,44 @@ export async function GET(request: Request): Promise<NextResponse> {
       if (cover) book.coverUrlFallback = cover
     }),
   )
+}
 
+export async function GET(request: Request): Promise<NextResponse> {
+  const params = new URL(request.url).searchParams
+  const isbn = (params.get("isbn") ?? "").replace(/[^0-9Xx]/g, "")
+  const query = params.get("q")?.trim() ?? ""
+
+  // ── Barcode path: exact ISBN lookup, single best result ──────────────────────
+  if (isbn) {
+    if (!/^(\d{9}[0-9Xx]|\d{13})$/.test(isbn)) {
+      return NextResponse.json({ results: [] satisfies BookSearchResult[] })
+    }
+    let results: BookSearchResult[]
+    try {
+      results = await fetchOpenLibrary(
+        `https://openlibrary.org/search.json?isbn=${isbn}&limit=1&fields=${OPEN_LIBRARY_FIELDS}`,
+      )
+    } catch {
+      return NextResponse.json({ results: [], error: "Lookup failed. Try again." }, { status: 504 })
+    }
+    // Pin the scanned ISBN onto the result so the saved book keeps the exact code.
+    results.forEach((b) => (b.isbn = isbn))
+    await backfillCovers(results)
+    return NextResponse.json({ results })
+  }
+
+  // ── Text search path ─────────────────────────────────────────────────────────
+  if (query.length < 2) {
+    return NextResponse.json({ results: [] satisfies BookSearchResult[] })
+  }
+  let results: BookSearchResult[]
+  try {
+    results = await fetchOpenLibrary(
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10&fields=${OPEN_LIBRARY_FIELDS}`,
+    )
+  } catch {
+    return NextResponse.json({ results: [], error: "Search timed out. Try again." }, { status: 504 })
+  }
+  await backfillCovers(results)
   return NextResponse.json({ results })
 }

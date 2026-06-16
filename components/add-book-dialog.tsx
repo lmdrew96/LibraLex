@@ -3,10 +3,11 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { useMutation } from "convex/react"
 import { toast } from "sonner"
-import { ArrowLeft, BookPlus, Search } from "lucide-react"
+import { ArrowLeft, BookPlus, Loader2, ScanBarcode, Search } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { BookSearchResult, Ownership } from "@/lib/types"
 import { defaultDueDate, dueLabel, fromDateInput, toDateInput } from "@/lib/loans"
+import { BarcodeScanner } from "@/components/barcode-scanner"
 import { BookCover } from "@/components/book-cover"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,7 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 
-type Step = "search" | "ownership" | "manual"
+type Step = "search" | "scan" | "ownership" | "manual"
 
 // Map a search result to the addBook mutation's bibliographic args.
 const bookArgs = (b: BookSearchResult) => ({
@@ -57,6 +58,10 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
   const [mYear, setMYear] = useState("")
   const [mPages, setMPages] = useState("")
 
+  // barcode-scan state
+  const [scannedIsbn, setScannedIsbn] = useState<string | null>(null)
+  const [looking, setLooking] = useState(false)
+
   const reset = () => {
     setStep("search")
     setQuery("")
@@ -71,6 +76,8 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
     setMAuthor("")
     setMYear("")
     setMPages("")
+    setScannedIsbn(null)
+    setLooking(false)
   }
 
   const handleOpenChange = (next: boolean) => {
@@ -131,9 +138,34 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
     pick({
       title,
       authors: [author],
+      isbn: scannedIsbn ?? undefined,
       firstPublishYear: mYear ? Number(mYear) : undefined,
       pageCount: mPages ? Number(mPages) : undefined,
     })
+  }
+
+  // Barcode → ISBN lookup. Drops the match straight into the ownership picker;
+  // on a miss, hands off to manual entry with the scanned ISBN preserved.
+  const handleScanned = async (isbn: string) => {
+    setLooking(true)
+    try {
+      const res = await fetch(`/api/search?isbn=${encodeURIComponent(isbn)}`)
+      const data = (await res.json()) as { results?: BookSearchResult[] }
+      const match = data.results?.[0]
+      if (match) {
+        pick(match)
+      } else {
+        setScannedIsbn(isbn)
+        setStep("manual")
+        toast("Scanned book isn't in Open Library — add its details.", { icon: "📖" })
+      }
+    } catch {
+      setScannedIsbn(isbn)
+      setStep("manual")
+      toast.error("Lookup failed — add the book's details manually.")
+    } finally {
+      setLooking(false)
+    }
   }
 
   const save = async (ownership: Ownership) => {
@@ -184,14 +216,22 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
             </button>
           )}
           <DialogTitle>
-            {step === "ownership" ? "Add to which shelf?" : step === "manual" ? "Add manually" : "Add a book"}
+            {step === "ownership"
+              ? "Add to which shelf?"
+              : step === "manual"
+                ? "Add manually"
+                : step === "scan"
+                  ? "Scan a barcode"
+                  : "Add a book"}
           </DialogTitle>
           <DialogDescription className="mt-1">
             {step === "ownership"
               ? "Pick where this book lives."
               : step === "manual"
                 ? "For the indie and obscure ones search can't find."
-                : "Search by title or author — covers and details fill in automatically."}
+                : step === "scan"
+                  ? "Point your camera at the barcode on the back cover."
+                  : "Search by title or author — covers and details fill in automatically."}
           </DialogDescription>
         </div>
 
@@ -205,8 +245,19 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
               searchError={searchError}
               onPick={pick}
               onManual={() => setStep("manual")}
+              onScan={() => setStep("scan")}
             />
           )}
+
+          {step === "scan" &&
+            (looking ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <Loader2 className="h-7 w-7 animate-spin text-teal" />
+                <p className="text-sm text-teal">Looking up the scanned book…</p>
+              </div>
+            ) : (
+              <BarcodeScanner onDetected={handleScanned} onManual={() => setStep("search")} />
+            ))}
 
           {step === "ownership" && selected && (
             <OwnershipStep
@@ -235,6 +286,7 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
               setYear={setMYear}
               pages={mPages}
               setPages={setMPages}
+              scannedIsbn={scannedIsbn}
               onSubmit={submitManual}
             />
           )}
@@ -253,6 +305,7 @@ function SearchStep({
   searchError,
   onPick,
   onManual,
+  onScan,
 }: {
   query: string
   setQuery: (v: string) => void
@@ -261,20 +314,31 @@ function SearchStep({
   searchError: string | null
   onPick: (b: BookSearchResult) => void
   onManual: () => void
+  onScan: () => void
 }) {
   const showEmpty = !searching && query.trim().length >= 2 && results.length === 0 && !searchError
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-teal" />
-        <input
-          autoFocus
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by title or author…"
-          className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-4 text-base text-ink placeholder:text-teal/60 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-teal" />
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by title or author…"
+            className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-4 text-base text-ink placeholder:text-teal/60 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onScan}
+          aria-label="Scan a barcode"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal text-surface transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+        >
+          <ScanBarcode className="h-5 w-5" />
+        </button>
       </div>
 
       {searching && (
@@ -422,6 +486,7 @@ function ManualStep({
   setYear,
   pages,
   setPages,
+  scannedIsbn,
   onSubmit,
 }: {
   title: string
@@ -432,6 +497,7 @@ function ManualStep({
   setYear: (v: string) => void
   pages: string
   setPages: (v: string) => void
+  scannedIsbn: string | null
   onSubmit: () => void
 }) {
   const inputClass =
@@ -444,6 +510,11 @@ function ManualStep({
       }}
       className="flex flex-col gap-3"
     >
+      {scannedIsbn && (
+        <p className="rounded-xl bg-lavender/40 px-3 py-2 font-mono text-xs text-teal">
+          Scanned ISBN {scannedIsbn} — we&apos;ll keep it on the book.
+        </p>
+      )}
       <label className="flex flex-col gap-1 text-sm font-medium text-teal">
         Title <span className="text-[var(--color-overdue)]">*</span>
         <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} className={inputClass} required />
