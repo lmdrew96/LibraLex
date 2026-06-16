@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useMutation, useQuery } from "convex/react"
 import { UserButton, useUser } from "@clerk/nextjs"
-import { BookMarked, BookOpen, Heart, Library, Sparkles, Users } from "lucide-react"
+import { BookMarked, BookOpen, Heart, Library, Search, Sparkles, Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { loanStatus } from "@/lib/loans"
 import { cn } from "@/lib/utils"
@@ -13,6 +13,7 @@ import { AddBookDialog } from "@/components/add-book-dialog"
 
 const NAV = [
   { href: "/", label: "Shelf", icon: BookMarked },
+  { href: "/search", label: "Search", icon: Search },
   { href: "/reading", label: "Reading", icon: BookOpen },
   { href: "/wishlist", label: "Wishlist", icon: Heart },
   { href: "/loans", label: "Loans", icon: Library },

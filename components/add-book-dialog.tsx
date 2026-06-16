@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { useMutation } from "convex/react"
 import { toast } from "sonner"
 import { ArrowLeft, BookPlus, Loader2, ScanBarcode, Search } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { BookSearchResult, Ownership } from "@/lib/types"
 import { defaultDueDate, dueLabel, fromDateInput, toDateInput } from "@/lib/loans"
+import { useBookSearch } from "@/lib/use-book-search"
 import { BarcodeScanner } from "@/components/barcode-scanner"
 import { BookCover } from "@/components/book-cover"
 import { Button } from "@/components/ui/button"
@@ -39,11 +40,9 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>("search")
 
-  // search state
+  // search state — query is local; results/searching/error come from the shared hook
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<BookSearchResult[]>([])
-  const [searching, setSearching] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
+  const { results, searching, error: searchError } = useBookSearch(query)
 
   // selection + library checkout state
   const [selected, setSelected] = useState<BookSearchResult | null>(null)
@@ -65,9 +64,6 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
   const reset = () => {
     setStep("search")
     setQuery("")
-    setResults([])
-    setSearching(false)
-    setSearchError(null)
     setSelected(null)
     setLibraryMode(false)
     setCheckoutInput(toDateInput(Date.now()))
@@ -84,44 +80,6 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
     setOpen(next)
     if (!next) reset()
   }
-
-  // Debounced search (~300ms). Aborts the in-flight request when the query moves on.
-  useEffect(() => {
-    const q = query.trim()
-    if (q.length < 2) {
-      setResults([])
-      setSearching(false)
-      setSearchError(null)
-      return
-    }
-    setSearching(true)
-    const ctrl = new AbortController()
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
-          signal: ctrl.signal,
-        })
-        const data = (await res.json()) as { results?: BookSearchResult[]; error?: string }
-        if (!res.ok) {
-          setResults([])
-          setSearchError(data.error ?? "Search is unavailable right now.")
-        } else {
-          setResults(data.results ?? [])
-          setSearchError(null)
-        }
-      } catch (err) {
-        if (!(err instanceof DOMException && err.name === "AbortError")) {
-          setSearchError("Search failed. Check your connection.")
-        }
-      } finally {
-        if (!ctrl.signal.aborted) setSearching(false)
-      }
-    }, 300)
-    return () => {
-      clearTimeout(timer)
-      ctrl.abort()
-    }
-  }, [query])
 
   const pick = (book: BookSearchResult) => {
     setSelected(book)
