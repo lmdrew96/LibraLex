@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { format } from "date-fns"
-import { ArrowLeft, Star, Trash2 } from "lucide-react"
+import { ArrowLeft, Share2, Star, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
 import type { Ownership, ReadStatus } from "@/lib/types"
@@ -15,6 +15,7 @@ import { dueLabel, loanStatus } from "@/lib/loans"
 import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
 import { BookCover } from "@/components/book-cover"
+import { RecommendDialog } from "@/components/recommend-dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -146,6 +147,18 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
             {book.firstPublishYear && <span>{book.firstPublishYear}</span>}
             {book.pageCount && <span>{book.pageCount} pages</span>}
             {book.isbn && <span className="font-mono text-xs">ISBN {book.isbn}</span>}
+          </div>
+
+          <div className="mt-4">
+            <RecommendDialog
+              book={book}
+              trigger={
+                <Button variant="outline" size="sm">
+                  <Share2 className="h-4 w-4" />
+                  Recommend to a friend
+                </Button>
+              }
+            />
           </div>
 
           {activeLoan && book.dueDate !== undefined && (

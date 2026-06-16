@@ -9,6 +9,11 @@
  */
 
 import type * as books from "../books.js";
+import type * as friends from "../friends.js";
+import type * as recs from "../recs.js";
+import type * as shelf from "../shelf.js";
+import type * as users from "../users.js";
+import type * as util from "../util.js";
 
 import type {
   ApiFromModules,
@@ -18,6 +23,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   books: typeof books;
+  friends: typeof friends;
+  recs: typeof recs;
+  shelf: typeof shelf;
+  users: typeof users;
+  util: typeof util;
 }>;
 
 /**

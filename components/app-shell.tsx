@@ -1,11 +1,11 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { type ReactNode, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useQuery } from "convex/react"
-import { UserButton } from "@clerk/nextjs"
-import { BookMarked, BookOpen, Heart, Library } from "lucide-react"
+import { useMutation, useQuery } from "convex/react"
+import { UserButton, useUser } from "@clerk/nextjs"
+import { BookMarked, BookOpen, Heart, Library, Sparkles, Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { loanStatus } from "@/lib/loans"
 import { cn } from "@/lib/utils"
@@ -16,15 +16,46 @@ const NAV = [
   { href: "/reading", label: "Reading", icon: BookOpen },
   { href: "/wishlist", label: "Wishlist", icon: Heart },
   { href: "/loans", label: "Loans", icon: Library },
+  { href: "/friends", label: "Friends", icon: Users },
+  { href: "/recs", label: "Recs", icon: Sparkles },
 ] as const
+
+// Keeps the caller's profile (and friend code) minted + in sync with Clerk on
+// every authenticated load. Invisible — this is the universal authed wrapper, so
+// it's the natural place to guarantee a profile exists before any social view.
+function useProfileSync() {
+  const { user, isLoaded } = useUser()
+  const ensureProfile = useMutation(api.users.ensureProfile)
+
+  const displayName =
+    user?.fullName || user?.firstName || user?.username || "Reader"
+  const avatarUrl = user?.imageUrl
+
+  useEffect(() => {
+    if (!isLoaded || !user) return
+    void ensureProfile({ displayName, avatarUrl })
+  }, [isLoaded, user, displayName, avatarUrl, ensureProfile])
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  useProfileSync()
+
   const loans = useQuery(api.books.listLoans)
-  // Badge = loans needing attention (due within 5 days or overdue).
+  const incoming = useQuery(api.friends.getIncomingRequests)
+  const unreadRecs = useQuery(api.recs.unreadCount)
+
+  // Loans badge = loans needing attention (due within 5 days or overdue).
   const dueSoon = (loans ?? []).filter(
     (b) => b.dueDate !== undefined && loanStatus(b.dueDate) !== "comfortable",
   ).length
+
+  const badgeFor = (href: string): number => {
+    if (href === "/loans") return dueSoon
+    if (href === "/friends") return incoming?.length ?? 0
+    if (href === "/recs") return unreadRecs ?? 0
+    return 0
+  }
 
   return (
     <div className="min-h-dvh bg-surface">
@@ -41,6 +72,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-3 pb-2">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href)
+            const badge = badgeFor(href)
+            // Loans uses the overdue accent (an alert); social badges use gold (a nudge).
+            const alertBadge = href === "/loans"
             return (
               <Link
                 key={href}
@@ -52,14 +86,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon className="h-4 w-4" />
                 {label}
-                {href === "/loans" && dueSoon > 0 && (
+                {badge > 0 && (
                   <span
                     className={cn(
                       "ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold",
-                      active ? "bg-surface text-teal" : "bg-[var(--color-overdue)] text-surface",
+                      active
+                        ? "bg-surface text-teal"
+                        : alertBadge
+                          ? "bg-[var(--color-overdue)] text-surface"
+                          : "bg-gold text-ink",
                     )}
                   >
-                    {dueSoon}
+                    {badge}
                   </span>
                 )}
               </Link>

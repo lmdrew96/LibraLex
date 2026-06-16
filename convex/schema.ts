@@ -1,10 +1,12 @@
 import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
 
-// Single denormalized `books` table — bibliographic fields + the shelf
-// relationship live on one record. Solo user for v1, so no dedup / no separate
-// editions table. All timestamps are ms-epoch numbers (Convex convention);
-// due-date math lives in mutations, never here.
+// Denormalized `books` table — bibliographic fields + the shelf relationship
+// live on one record. Friends layer adds `users` (a profile per Clerk identity,
+// so a friend sees a name not a token), `friendships` (mutual request → accept),
+// and `recommendations` (a self-contained book snapshot one friend sends another).
+// All timestamps are ms-epoch numbers (Convex convention); date math lives in
+// mutations, never here.
 export default defineSchema({
   books: defineTable({
     userId: v.string(), // Clerk user id (identity.tokenIdentifier)
@@ -39,4 +41,55 @@ export default defineSchema({
     .index("by_user_ownership", ["userId", "ownership"])
     .index("by_user_readStatus", ["userId", "readStatus"])
     .index("by_user_dueDate", ["userId", "dueDate"]),
+
+  // One profile row per Clerk identity. Minted on first authenticated load
+  // (see users.ensureProfile) and kept in sync with Clerk's name/avatar. The
+  // `friendCode` is the only handle a friend ever needs — short, unique, shareable.
+  users: defineTable({
+    userId: v.string(), // Clerk identity.tokenIdentifier — same value books.userId uses
+    displayName: v.string(),
+    avatarUrl: v.optional(v.string()),
+    friendCode: v.string(), // e.g. "SHELF-7K2Q" — unique, ambiguity-free charset
+    createdAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_friendCode", ["friendCode"]),
+
+  // A friendship is a single row regardless of direction. `requester` sent it,
+  // `addressee` accepts or declines. Both `by_*` indexes are scanned to assemble
+  // "my friends" (I may be on either side); `by_pair` dedupes a directed edge.
+  friendships: defineTable({
+    requesterId: v.string(),
+    addresseeId: v.string(),
+    status: v.union(v.literal("pending"), v.literal("accepted")),
+    createdAt: v.number(),
+    respondedAt: v.optional(v.number()),
+  })
+    .index("by_requester", ["requesterId"])
+    .index("by_addressee", ["addresseeId"])
+    .index("by_pair", ["requesterId", "addresseeId"]),
+
+  // A recommendation carries its own book snapshot so it stands alone even if the
+  // sender later removes the book from their shelf. Acting on a rec (add/dismiss)
+  // deletes the row, so the inbox stays an actionable list, not an archive.
+  recommendations: defineTable({
+    fromUserId: v.string(),
+    toUserId: v.string(),
+
+    // book snapshot (mirrors the bibliographic half of `books`)
+    title: v.string(),
+    authors: v.array(v.string()),
+    isbn: v.optional(v.string()),
+    coverId: v.optional(v.number()),
+    coverUrlFallback: v.optional(v.string()),
+    workKey: v.optional(v.string()),
+    firstPublishYear: v.optional(v.number()),
+    pageCount: v.optional(v.number()),
+
+    message: v.optional(v.string()), // optional note from the sender
+    status: v.union(v.literal("unread"), v.literal("read")),
+    createdAt: v.number(),
+  })
+    .index("by_recipient", ["toUserId"])
+    .index("by_recipient_status", ["toUserId", "status"]),
 })

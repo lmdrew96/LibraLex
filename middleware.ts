@@ -11,7 +11,13 @@ export default clerkMiddleware(async (auth, req) => {
   if (!isPublicRoute(req)) {
     const { userId } = await auth()
     if (!userId) {
-      return NextResponse.redirect(new URL("/login", req.url))
+      // Preserve the intended destination (e.g. an /add/<code> share link) so
+      // Clerk's <SignIn> returns the visitor there after auth. redirect_url takes
+      // precedence over the fallback redirect set on <ClerkProvider>.
+      const loginUrl = new URL("/login", req.url)
+      const dest = req.nextUrl.pathname + req.nextUrl.search
+      if (dest && dest !== "/") loginUrl.searchParams.set("redirect_url", dest)
+      return NextResponse.redirect(loginUrl)
     }
   }
 })
