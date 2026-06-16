@@ -10,6 +10,9 @@
 
 import type * as books from "../books.js";
 import type * as friends from "../friends.js";
+import type * as http from "../http.js";
+import type * as mcpAuth from "../mcpAuth.js";
+import type * as mcpData from "../mcpData.js";
 import type * as recs from "../recs.js";
 import type * as shelf from "../shelf.js";
 import type * as users from "../users.js";
@@ -24,6 +27,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   books: typeof books;
   friends: typeof friends;
+  http: typeof http;
+  mcpAuth: typeof mcpAuth;
+  mcpData: typeof mcpData;
   recs: typeof recs;
   shelf: typeof shelf;
   users: typeof users;

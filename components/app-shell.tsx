@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useMutation, useQuery } from "convex/react"
 import { UserButton, useUser } from "@clerk/nextjs"
-import { BookMarked, BookOpen, Heart, Library, Search, Sparkles, Users } from "lucide-react"
+import { BookMarked, BookOpen, Heart, Library, Search, Settings, Sparkles, Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { loanStatus } from "@/lib/loans"
 import { cn } from "@/lib/utils"
@@ -67,6 +67,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
           <div className="flex items-center gap-3">
             <AddBookDialog />
+            <Link
+              href="/settings"
+              aria-label="Settings"
+              className={cn(
+                "flex h-9 w-9 items-center justify-center rounded-full transition-colors",
+                pathname.startsWith("/settings")
+                  ? "bg-teal text-surface"
+                  : "text-ink/70 hover:bg-lavender/60",
+              )}
+            >
+              <Settings className="h-5 w-5" />
+            </Link>
             <UserButton />
           </div>
         </div>

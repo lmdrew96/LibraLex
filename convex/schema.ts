@@ -50,10 +50,16 @@ export default defineSchema({
     displayName: v.string(),
     avatarUrl: v.optional(v.string()),
     friendCode: v.string(), // e.g. "SHELF-7K2Q" — unique, ambiguity-free charset
+    // Secret bearer token for the MCP door (convex/http.ts). Absent until the user
+    // generates one in Settings; rotating/revoking just rewrites/clears it. Unlike
+    // the human-friendly friendCode, this carries real entropy — it grants read
+    // access to the shelf. Indexed so the MCP can resolve token → userId in O(1).
+    mcpToken: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_friendCode", ["friendCode"]),
+    .index("by_friendCode", ["friendCode"])
+    .index("by_mcpToken", ["mcpToken"]),
 
   // A friendship is a single row regardless of direction. `requester` sent it,
   // `addressee` accepts or declines. Both `by_*` indexes are scanned to assemble
