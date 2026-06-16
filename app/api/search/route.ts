@@ -11,7 +11,11 @@ const OPEN_LIBRARY_FIELDS =
 
 // Bound worst-case Google Books calls per search (most OL results have a cover_i).
 const MAX_COVER_BACKFILLS = 6
-const FETCH_TIMEOUT_MS = 4000
+// Open Library's search.json is routinely slow (5–8s observed) — be patient with
+// the primary fetch. The Google backfill is secondary, so keep its budget short
+// so it can't pad the overall response.
+const OPEN_LIBRARY_TIMEOUT_MS = 12000
+const GOOGLE_TIMEOUT_MS = 3000
 
 type OpenLibraryDoc = {
   title?: string
@@ -62,7 +66,7 @@ const fetchGoogleCover = async (isbn: string): Promise<string | null> => {
     const keyParam = apiKey ? `&key=${apiKey}` : ""
     const res = await fetchWithTimeout(
       `https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&maxResults=1${keyParam}`,
-      FETCH_TIMEOUT_MS,
+      GOOGLE_TIMEOUT_MS,
     )
     if (!res.ok) return null
     const data = (await res.json()) as {
@@ -87,7 +91,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   try {
     const res = await fetchWithTimeout(
       `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10&fields=${OPEN_LIBRARY_FIELDS}`,
-      FETCH_TIMEOUT_MS,
+      OPEN_LIBRARY_TIMEOUT_MS,
     )
     if (!res.ok) {
       return NextResponse.json(
