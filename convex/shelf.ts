@@ -3,7 +3,7 @@ import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { getUserId } from "./util"
 import { areFriends } from "./friends"
-import { profileFor, toPublicProfile } from "./users"
+import { toPublicProfile } from "./users"
 
 // A friend-visible book: the bibliographic fields plus the social signal
 // (rating + review + where it lives), with library loan logistics deliberately
@@ -47,19 +47,22 @@ const toSharedBook = (b: Doc<"books">): SharedBook => ({
 // viewer isn't friends with the target (or the target doesn't exist), which the
 // page renders as a gentle "not friends" state rather than leaking existence.
 export const getFriendShelf = query({
-  args: { friendUserId: v.string() },
+  // Routed by the friend's `users` document id — a URL-safe Convex id, never the
+  // Clerk tokenIdentifier (which contains "://" and "|" and can't survive a
+  // single dynamic route segment).
+  args: { friendId: v.id("users") },
   handler: async (ctx, args) => {
     const me = await getUserId(ctx)
     if (!me) return null
-    if (args.friendUserId === me) return null // use your own shelf views
-    if (!(await areFriends(ctx, me, args.friendUserId))) return null
 
-    const profile = await profileFor(ctx, args.friendUserId)
+    const profile = await ctx.db.get(args.friendId)
     if (!profile) return null
+    if (profile.userId === me) return null // use your own shelf views
+    if (!(await areFriends(ctx, me, profile.userId))) return null
 
     const books = await ctx.db
       .query("books")
-      .withIndex("by_user", (q) => q.eq("userId", args.friendUserId))
+      .withIndex("by_user", (q) => q.eq("userId", profile.userId))
       .collect()
 
     return {

@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useQuery } from "convex/react"
 import { ArrowLeft, Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
 import type { SharedBook } from "@/convex/shelf"
 import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
@@ -24,10 +25,12 @@ const TABS: { key: Tab; label: string; match: (b: SharedBook) => boolean }[] = [
 export default function FriendShelfPage({
   params,
 }: {
-  params: Promise<{ userId: string }>
+  params: Promise<{ friendId: string }>
 }) {
-  const { userId } = use(params)
-  const shelf = useQuery(api.shelf.getFriendShelf, { friendUserId: userId })
+  const { friendId } = use(params)
+  const shelf = useQuery(api.shelf.getFriendShelf, {
+    friendId: friendId as Id<"users">,
+  })
   const [tab, setTab] = useState<Tab>("owned")
 
   const counts = useMemo(() => {

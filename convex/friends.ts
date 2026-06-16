@@ -61,7 +61,8 @@ export const getFriends = query({
         const otherId = f.requesterId === userId ? f.addresseeId : f.requesterId
         const profile = await profileFor(ctx, otherId)
         if (!profile) return null
-        return { ...toPublicProfile(profile), friendshipId: f._id }
+        // profileId is the URL-safe handle used to route to a friend's shelf.
+        return { ...toPublicProfile(profile), profileId: profile._id, friendshipId: f._id }
       }),
     )
 

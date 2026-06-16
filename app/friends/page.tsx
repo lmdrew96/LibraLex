@@ -211,7 +211,7 @@ export default function FriendsPage() {
                 className="flex items-center gap-3 rounded-2xl border border-lavender bg-card p-3 transition-colors hover:bg-lavender/30"
               >
                 <Link
-                  href={`/friends/${encodeURIComponent(friend.userId)}`}
+                  href={`/friends/${friend.profileId}`}
                   className="flex min-w-0 flex-1 items-center gap-3 focus-visible:outline-none"
                 >
                   <FriendAvatar name={friend.displayName} avatarUrl={friend.avatarUrl} size="md" />
