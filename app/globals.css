@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+/* ============================================================
+   LibraLex — ADHDesigns house theme (light, brand-canonical)
+   Tokens mirror the ADHDesigns brand kit. Fonts are injected by
+   next/font in app/layout.tsx as --font-fraunces / -space-grotesk /
+   -geist-mono, then mapped to brand font tokens below.
+   ============================================================ */
+@theme {
+  /* Brand palette */
+  --color-olive: #849440;
+  --color-teal: #244952;
+  --color-gold: #dfa649;
+  --color-purple: #88739e;
+  --color-mint: #8cbdb9;
+  --color-green: #97d181;
+  --color-lavender: #dbd5e2;
+  --color-surface: #f7f5fa;
+  --color-ink: #1e1830;
+  --color-card: #ffffff;
+
+  /* Semantic — loan due-date states (ND-friendly, not alarm-fatiguing).
+     comfortable = calm neutral, soon = brand gold, overdue = muted brick red. */
+  --color-due-soon: #dfa649;
+  --color-overdue: #c2453d;
+
+  /* Typography — next/font variables, with graceful fallbacks */
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-body: var(--font-space-grotesk), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "Fira Code", monospace;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 9999px;
+
+  /* Shadows */
+  --shadow-card: 0px 1px 1.5px rgba(0, 0, 0, 0.1), 0px 1px 1px rgba(0, 0, 0, 0.1);
+  --shadow-swatch: 0px 10px 15px rgba(0, 0, 0, 0.1), 0px 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.56;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-variation-settings: "SOFT" 0, "WONK" 1;
+  color: var(--color-ink);
+  line-height: 1.15;
+}
+
+/* Cover placeholder gradient — used by <BookCover> when no image resolves.
+   Spine-like, high-contrast, never harsh pure white. */
+.cover-placeholder {
+  background: linear-gradient(150deg, var(--color-purple) 0%, var(--color-teal) 100%);
+  color: var(--color-surface);
+}
+
+/* Cover-shaped skeleton shimmer (loading states — no spinners). */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-lavender) 25%,
+    color-mix(in srgb, var(--color-lavender) 60%, white) 50%,
+    var(--color-lavender) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}

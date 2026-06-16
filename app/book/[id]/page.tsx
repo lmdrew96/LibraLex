@@ -1,0 +1,253 @@
+"use client"
+
+import { use, useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { useMutation, useQuery } from "convex/react"
+import { toast } from "sonner"
+import { format } from "date-fns"
+import { ArrowLeft, Star, Trash2 } from "lucide-react"
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
+import type { Ownership, ReadStatus } from "@/lib/types"
+import { OWNERSHIP_LABELS, READ_STATUS_LABELS } from "@/lib/types"
+import { dueLabel, loanStatus } from "@/lib/loans"
+import { cn } from "@/lib/utils"
+import { AppShell } from "@/components/app-shell"
+import { BookCover } from "@/components/book-cover"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+
+const READ_STATUSES: ReadStatus[] = ["unread", "reading", "read"]
+const OWNERSHIPS: Ownership[] = ["owned", "wishlist", "library"]
+
+const dueColor: Record<string, string> = {
+  comfortable: "text-teal",
+  soon: "text-[var(--color-due-soon)]",
+  overdue: "text-[var(--color-overdue)] font-semibold",
+}
+
+export default function BookDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
+  const book = useQuery(api.books.getBook, { id: id as Id<"books"> })
+
+  const updateBook = useMutation(api.books.updateBook)
+  const checkoutBook = useMutation(api.books.checkoutBook)
+  const deleteBook = useMutation(api.books.deleteBook)
+  const router = useRouter()
+
+  const [review, setReview] = useState<string | null>(null)
+
+  if (book === undefined) {
+    return (
+      <AppShell>
+        <div className="flex flex-col gap-6 sm:flex-row">
+          <Skeleton className="aspect-[2/3] w-44 shrink-0" />
+          <div className="flex-1 space-y-4 pt-2">
+            <Skeleton className="h-8 w-2/3 rounded" />
+            <Skeleton className="h-5 w-1/3 rounded" />
+            <Skeleton className="h-24 w-full rounded-2xl" />
+          </div>
+        </div>
+      </AppShell>
+    )
+  }
+
+  if (book === null) {
+    return (
+      <AppShell>
+        <div className="py-16 text-center">
+          <p className="text-teal">This book isn&apos;t here anymore.</p>
+          <Link href="/" className="mt-3 inline-block font-medium text-teal underline">
+            Back to your shelf
+          </Link>
+        </div>
+      </AppShell>
+    )
+  }
+
+  const activeLoan = book.ownership === "library" && book.dueDate !== undefined && book.returned !== true
+  const reviewValue = review ?? book.review ?? ""
+
+  const setStatus = async (status: ReadStatus) => {
+    if (status === book.readStatus) return
+    try {
+      await updateBook({ id: book._id, patch: { readStatus: status } })
+      toast.success(`Marked ${READ_STATUS_LABELS[status].toLowerCase()}.`)
+    } catch {
+      toast.error("Couldn't update status.")
+    }
+  }
+
+  const setRating = async (n: number) => {
+    try {
+      await updateBook({ id: book._id, patch: { rating: n } })
+    } catch {
+      toast.error("Couldn't save rating.")
+    }
+  }
+
+  const saveReview = async () => {
+    if (reviewValue === (book.review ?? "")) return
+    try {
+      await updateBook({ id: book._id, patch: { review: reviewValue } })
+      toast.success("Review saved.")
+    } catch {
+      toast.error("Couldn't save review.")
+    }
+  }
+
+  const changeOwnership = async (next: Ownership) => {
+    if (next === book.ownership) return
+    try {
+      if (next === "library") {
+        await checkoutBook({ id: book._id })
+        toast.success("Moved to library loans — due in 3 weeks. Adjust on the Loans tab.")
+      } else {
+        await updateBook({ id: book._id, patch: { ownership: next } })
+        toast.success(`Moved to ${OWNERSHIP_LABELS[next].toLowerCase()}.`)
+      }
+    } catch {
+      toast.error("Couldn't change shelf.")
+    }
+  }
+
+  const remove = async () => {
+    if (!confirm(`Delete “${book.title}” from your library? This can't be undone.`)) return
+    try {
+      await deleteBook({ id: book._id })
+      toast.success("Deleted.")
+      router.push("/")
+    } catch {
+      toast.error("Couldn't delete it.")
+    }
+  }
+
+  return (
+    <AppShell>
+      <button
+        onClick={() => router.back()}
+        className="mb-4 inline-flex items-center gap-1 text-sm text-teal hover:underline"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back
+      </button>
+
+      <div className="flex flex-col gap-6 sm:flex-row sm:gap-8">
+        <div className="mx-auto w-44 shrink-0 sm:mx-0">
+          <BookCover coverId={book.coverId} coverUrlFallback={book.coverUrlFallback} title={book.title} size="L" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h1 className="text-3xl font-semibold">{book.title}</h1>
+          <p className="mt-1 text-lg text-teal">{book.authors.join(", ") || "Unknown author"}</p>
+
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-teal/80">
+            {book.firstPublishYear && <span>{book.firstPublishYear}</span>}
+            {book.pageCount && <span>{book.pageCount} pages</span>}
+            {book.isbn && <span className="font-mono text-xs">ISBN {book.isbn}</span>}
+          </div>
+
+          {activeLoan && book.dueDate !== undefined && (
+            <p className={cn("mt-3 text-sm", dueColor[loanStatus(book.dueDate)])}>
+              On loan · {dueLabel(book.dueDate)} (due {format(book.dueDate, "MMM d, yyyy")})
+            </p>
+          )}
+
+          {/* Read status */}
+          <section className="mt-6">
+            <h2 className="mb-2 text-sm font-semibold text-teal">Status</h2>
+            <Segmented
+              options={READ_STATUSES.map((s) => ({ value: s, label: READ_STATUS_LABELS[s] }))}
+              value={book.readStatus}
+              onChange={(v) => setStatus(v as ReadStatus)}
+            />
+          </section>
+
+          {/* Rating */}
+          <section className="mt-5">
+            <h2 className="mb-2 text-sm font-semibold text-teal">Your rating</h2>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setRating(n)}
+                  aria-label={`Rate ${n} star${n === 1 ? "" : "s"}`}
+                  className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+                >
+                  <Star
+                    className={cn(
+                      "h-7 w-7 transition-colors",
+                      book.rating && n <= book.rating
+                        ? "fill-gold text-gold"
+                        : "fill-transparent text-lavender",
+                    )}
+                  />
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* Review */}
+          <section className="mt-5">
+            <h2 className="mb-2 text-sm font-semibold text-teal">Review</h2>
+            <textarea
+              value={reviewValue}
+              onChange={(e) => setReview(e.target.value)}
+              onBlur={saveReview}
+              placeholder="A few words for future you…"
+              rows={4}
+              className="w-full rounded-2xl border border-lavender bg-card p-3 text-ink placeholder:text-teal/50 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
+            />
+            <p className="mt-1 text-xs text-teal/70">Saves when you click away.</p>
+          </section>
+
+          {/* Ownership */}
+          <section className="mt-5">
+            <h2 className="mb-2 text-sm font-semibold text-teal">Shelf</h2>
+            <Segmented
+              options={OWNERSHIPS.map((o) => ({ value: o, label: OWNERSHIP_LABELS[o] }))}
+              value={book.ownership}
+              onChange={(v) => changeOwnership(v as Ownership)}
+            />
+          </section>
+
+          {/* Delete */}
+          <section className="mt-8 border-t border-lavender pt-5">
+            <Button variant="danger" size="sm" onClick={remove}>
+              <Trash2 className="h-4 w-4" />
+              Delete book
+            </Button>
+          </section>
+        </div>
+      </div>
+    </AppShell>
+  )
+}
+
+function Segmented({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="inline-flex rounded-full border border-lavender bg-card p-1">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={cn(
+            "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+            value === opt.value ? "bg-teal text-surface" : "text-ink/70 hover:bg-lavender/50",
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
