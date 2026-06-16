@@ -28,3 +28,11 @@ export const READ_STATUS_LABELS: Record<ReadStatus, string> = {
   reading: "Reading",
   read: "Read",
 }
+
+/** Enriched reference data for a book — summary, subjects, author bios. Fetched
+ *  on demand from `/api/book-info` (Open Library, iTunes fallback); never stored. */
+export type BookInfo = {
+  description?: string
+  subjects: string[]
+  authors: { name: string; bio?: string }[]
+}

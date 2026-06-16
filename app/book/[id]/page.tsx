@@ -12,9 +12,11 @@ import type { Id } from "@/convex/_generated/dataModel"
 import type { Ownership, ReadStatus } from "@/lib/types"
 import { OWNERSHIP_LABELS, READ_STATUS_LABELS } from "@/lib/types"
 import { dueLabel, loanStatus } from "@/lib/loans"
+import { useBookInfo } from "@/lib/use-book-info"
 import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
 import { BookCover } from "@/components/book-cover"
+import { BookInfo } from "@/components/book-info"
 import { RecommendDialog } from "@/components/recommend-dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -38,6 +40,13 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
   const router = useRouter()
 
   const [review, setReview] = useState<string | null>(null)
+
+  // Enrichment (summary, subjects, author bios). Stays quiet until the book loads.
+  const { data: bookInfo, loading: bookInfoLoading } = useBookInfo({
+    workKey: book?.workKey,
+    title: book?.title ?? "",
+    author: book?.authors?.[0],
+  })
 
   if (book === undefined) {
     return (
@@ -234,6 +243,11 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
           </section>
         </div>
       </div>
+
+      {/* Summary, subjects, author bios — full width below the main panel. */}
+      <section className="mt-10 border-t border-lavender pt-6">
+        <BookInfo data={bookInfo} loading={bookInfoLoading} />
+      </section>
     </AppShell>
   )
 }
