@@ -1,11 +1,14 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 
-// Everything is private except the auth pages. Unauthenticated visitors are sent
-// to /login explicitly — we mount Clerk's <SignIn> there (not Clerk's default
-// /sign-in), so we redirect by hand rather than relying on auth.protect()'s
-// default sign-in resolution (which 404s when no signInUrl is configured).
-const isPublicRoute = createRouteMatcher(["/login(.*)", "/signup(.*)"])
+// Everything is private except the auth pages and the MCP proxy. Unauthenticated
+// visitors are sent to /login explicitly — we mount Clerk's <SignIn> there (not
+// Clerk's default /sign-in), so we redirect by hand rather than relying on
+// auth.protect()'s default sign-in resolution (which 404s when no signInUrl is
+// configured). `/mcp/*` is public because it's rewritten to the Convex MCP door,
+// which does its own per-token auth; the caller (Claude) has no Clerk session, so
+// Clerk-gating it would bounce every request to /login.
+const isPublicRoute = createRouteMatcher(["/login(.*)", "/signup(.*)", "/mcp(.*)"])
 
 export default clerkMiddleware(async (auth, req) => {
   if (!isPublicRoute(req)) {

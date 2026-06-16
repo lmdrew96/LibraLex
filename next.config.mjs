@@ -23,6 +23,16 @@ const nextConfig = {
       { protocol: "https", hostname: "books.googleusercontent.com" },
     ],
   },
+  async rewrites() {
+    // The MCP server is a Convex HTTP action, served from the …convex.site domain.
+    // Proxy it under our own origin so the link users hand to Claude is
+    // https://libra.adhdesigns.dev/mcp/<token>, not the raw deployment host. Next
+    // forwards the POST (method + body) straight through. No-op if the Convex site
+    // URL isn't configured.
+    const convexSite = process.env.NEXT_PUBLIC_CONVEX_SITE_URL
+    if (!convexSite) return []
+    return [{ source: "/mcp/:path*", destination: `${convexSite}/mcp/:path*` }]
+  },
 }
 
 export default nextConfig

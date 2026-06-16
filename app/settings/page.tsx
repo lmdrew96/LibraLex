@@ -9,17 +9,17 @@ import { AppShell } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
-// The MCP door lives on Convex's HTTP-actions domain (…convex.site), not the app
-// origin. This is exposed to the client so the URL can be assembled here.
-const SITE_URL = process.env.NEXT_PUBLIC_CONVEX_SITE_URL ?? ""
-
 export default function SettingsPage() {
   const token = useQuery(api.mcpAuth.getMyMcpToken)
   const generate = useAction(api.mcpAuth.generateMcpToken)
   const revoke = useMutation(api.mcpAuth.revokeMcpToken)
   const [busy, setBusy] = useState(false)
 
-  const mcpUrl = token ? `${SITE_URL}/mcp/${token}` : ""
+  // Build the link from the app's own origin (libra.adhdesigns.dev in prod). A
+  // Next rewrite proxies /mcp/* to the Convex HTTP-actions endpoint, so the URL we
+  // hand to Claude stays on-brand instead of exposing the raw …convex.site host.
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  const mcpUrl = token ? `${origin}/mcp/${token}` : ""
 
   const onGenerate = async () => {
     setBusy(true)
