@@ -16,6 +16,7 @@ const MAX_COVER_BACKFILLS = 6
 // so it can't pad the overall response.
 const OPEN_LIBRARY_TIMEOUT_MS = 12000
 const GOOGLE_TIMEOUT_MS = 3000
+const ITUNES_TIMEOUT_MS = 3000
 
 type OpenLibraryDoc = {
   title?: string
@@ -81,6 +82,55 @@ const fetchGoogleCover = async (isbn: string): Promise<string | null> => {
   }
 }
 
+const normalizeTitle = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+/**
+ * Look up a cover via the iTunes Search API (keyless, no quota). Matches by
+ * title + author, with a loose title-overlap guard so we don't show a wrong
+ * book's cover. Returns an upscaled (600px) https artwork URL or null.
+ */
+const fetchItunesCover = async (book: BookSearchResult): Promise<string | null> => {
+  try {
+    const term = [book.title, book.authors[0]].filter(Boolean).join(" ")
+    const res = await fetchWithTimeout(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=ebook&limit=5`,
+      ITUNES_TIMEOUT_MS,
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      results?: Array<{ artworkUrl100?: string; trackName?: string; collectionName?: string }>
+    }
+
+    // Scan the top results for the first whose title meaningfully overlaps the
+    // wanted title — guards against iTunes ranking a different book first.
+    const want = normalizeTitle(book.title)
+    const key = want.slice(0, 12)
+    const match = (data.results ?? []).find((item) => {
+      if (!item.artworkUrl100) return false
+      const got = normalizeTitle(item.trackName ?? item.collectionName ?? "")
+      return Boolean(got) && (got.includes(key) || want.includes(got.slice(0, 12)))
+    })
+    if (!match?.artworkUrl100) return null
+
+    // artworkUrl100 ends in /100x100bb.jpg — bump to a crisp 600px.
+    return match.artworkUrl100.replace(/\/\d+x\d+bb\.jpg$/, "/600x600bb.jpg")
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Best-effort cover for a result Open Library has no cover_i for. iTunes first
+ * (keyless, reliable); Google Books only as a bonus when an ISBN + API key exist
+ * (keyless Google is globally quota-throttled — HTTP 429).
+ */
+const fetchFallbackCover = async (book: BookSearchResult): Promise<string | null> => {
+  const itunes = await fetchItunesCover(book)
+  if (itunes) return itunes
+  if (book.isbn) return await fetchGoogleCover(book.isbn)
+  return null
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   const query = new URL(request.url).searchParams.get("q")?.trim() ?? ""
   if (query.length < 2) {
@@ -109,10 +159,10 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   // Backfill covers Open Library lacks, in parallel, capped and fault-tolerant.
-  const needsCover = results.filter((b) => b.coverId === undefined && b.isbn)
+  const needsCover = results.filter((b) => b.coverId === undefined)
   await Promise.allSettled(
     needsCover.slice(0, MAX_COVER_BACKFILLS).map(async (book) => {
-      const cover = await fetchGoogleCover(book.isbn!)
+      const cover = await fetchFallbackCover(book)
       if (cover) book.coverUrlFallback = cover
     }),
   )
