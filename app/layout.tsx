@@ -37,7 +37,13 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider afterSignOutUrl="/login">
+    <ClerkProvider
+      signInUrl="/login"
+      signUpUrl="/signup"
+      signInFallbackRedirectUrl="/"
+      signUpFallbackRedirectUrl="/"
+      afterSignOutUrl="/login"
+    >
       <html lang="en">
         <body
           className={`${fraunces.variable} ${spaceGrotesk.variable} ${geistMono.variable} antialiased`}
