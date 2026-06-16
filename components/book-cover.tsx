@@ -19,6 +19,11 @@ const placeholderText: Record<CoverSize, string> = {
   L: "text-sm leading-snug p-3",
 }
 
+// Fetch a higher-res Open Library variant than the display box so covers stay
+// crisp on retina screens. OL's `M` is only 180px wide; `L` is ~320px. Tiny
+// search thumbnails (S) fetch M; grids and detail (M/L) fetch full-res L.
+const OL_RESOLUTION: Record<CoverSize, "S" | "M" | "L"> = { S: "M", M: "L", L: "L" }
+
 /**
  * The one place cover URLs get built. Renders from Open Library's cover_i
  * (rate-limit-free) — never from ISBN. Tries the OL by-id image first, then the
@@ -37,7 +42,9 @@ export function BookCover({
   const sources = useMemo(() => {
     const list: string[] = []
     if (coverId !== undefined) {
-      list.push(`https://covers.openlibrary.org/b/id/${coverId}-${size}.jpg?default=false`)
+      list.push(
+        `https://covers.openlibrary.org/b/id/${coverId}-${OL_RESOLUTION[size]}.jpg?default=false`,
+      )
     }
     if (coverUrlFallback) list.push(coverUrlFallback)
     return list
