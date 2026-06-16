@@ -152,7 +152,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
           <h1 className="text-3xl font-semibold">{book.title}</h1>
           <p className="mt-1 text-lg text-teal">{book.authors.join(", ") || "Unknown author"}</p>
 
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-teal/80">
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-teal">
             {book.firstPublishYear && <span>{book.firstPublishYear}</span>}
             {book.pageCount && <span>{book.pageCount} pages</span>}
             {book.isbn && <span className="font-mono text-xs">ISBN {book.isbn}</span>}
@@ -221,7 +221,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
               rows={4}
               className="w-full rounded-2xl border border-lavender bg-card p-3 text-ink placeholder:text-teal/50 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
             />
-            <p className="mt-1 text-xs text-teal/70">Saves when you click away.</p>
+            <p className="mt-1 text-xs text-teal/90">Saves when you click away.</p>
           </section>
 
           {/* Ownership */}

@@ -7,22 +7,34 @@
    -geist-mono, then mapped to brand font tokens below.
    ============================================================ */
 @theme {
-  /* Brand palette */
-  --color-olive: #849440;
-  --color-teal: #244952;
-  --color-gold: #dfa649;
-  --color-purple: #88739e;
-  --color-mint: #8cbdb9;
-  --color-green: #97d181;
-  --color-lavender: #dbd5e2;
-  --color-surface: #f7f5fa;
-  --color-ink: #1e1830;
-  --color-card: #ffffff;
+  /* LibraLex palette — Meadow / Twilight / Cerulean (custom, ND-tuned).
+     Brand trio: Meadow Rush #a3caa2, Twilight Indigo #455079, Warm Cerulean #5598a2.
+     Text + active-fill roles are deepened from the cerulean so small text clears
+     WCAG AA on the light surface; gold + brick stay as functional state accents. */
 
-  /* Semantic — loan due-date states (ND-friendly, not alarm-fatiguing).
-     comfortable = calm neutral, soon = brand gold, overdue = muted brick red. */
-  --color-due-soon: #dfa649;
-  --color-overdue: #c2453d;
+  /* Brand trio (faithful) */
+  --color-meadow: #a3caa2;
+  --color-indigo: #455079;
+  --color-cerulean: #5598a2;
+
+  /* Mapped roles — existing token names so every component re-themes from here */
+  --color-teal: #2a5c68; /* deepened Warm Cerulean — secondary text, active fills, icons (AA on surface) */
+  --color-ink: #455079; /* Twilight Indigo — primary text + headings */
+  --color-surface: #edf3f1; /* pale cerulean-mint — calm page background */
+  --color-card: #ffffff;
+  --color-mint: #8dc2bd; /* soft cerulean-green — "calm" surfaces/buttons */
+  --color-green: #a3caa2; /* Meadow Rush — success, read status, confirmations */
+  --color-lavender: #cfe0dd; /* cool mint-gray — borders, muted fills, skeletons */
+  --color-purple: #5666a0; /* lighter twilight indigo — decorative */
+  --color-olive: #5b8f7e; /* muted spruce — spare accent */
+
+  /* State accents — fully cool. The "gold" token is repurposed as the bright
+     Warm Cerulean accent (ratings, "reading" status, status dots). Due-soon shifts
+     to periwinkle; overdue keeps a muted brick red as the single deliberate alert
+     — a cool palette has no natural "urgent" hue, and ND state-signaling needs one. */
+  --color-gold: #5598a2; /* Warm Cerulean — ratings stars, reading status */
+  --color-due-soon: #5666a0; /* periwinkle — loan "due soon" caution */
+  --color-overdue: #c2453d; /* muted brick — overdue alert (kept for clarity) */
 
   /* Typography — next/font variables, with graceful fallbacks */
   --font-display: var(--font-fraunces), Georgia, serif;
@@ -62,7 +74,7 @@ h4 {
 /* Cover placeholder gradient — used by <BookCover> when no image resolves.
    Spine-like, high-contrast, never harsh pure white. */
 .cover-placeholder {
-  background: linear-gradient(150deg, var(--color-purple) 0%, var(--color-teal) 100%);
+  background: linear-gradient(150deg, var(--color-ink) 0%, var(--color-teal) 100%);
   color: var(--color-surface);
 }
 

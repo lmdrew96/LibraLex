@@ -50,7 +50,7 @@ export function FriendBookCard({ book }: { book: SharedBook }) {
 // The friend's take, shown beside the cover in the dialog header.
 function FriendTake({ book }: { book: SharedBook }) {
   if (book.rating === undefined && !book.review) {
-    return <p className="text-sm text-teal/70">No rating or review yet.</p>
+    return <p className="text-sm text-teal/90">No rating or review yet.</p>
   }
   return (
     <div className="flex flex-col gap-2">

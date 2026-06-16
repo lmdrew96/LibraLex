@@ -71,7 +71,7 @@ export default function ReadingPage() {
                     <p className="font-medium text-ink">{book.title}</p>
                     <p className="text-sm text-teal">{book.authors[0] ?? "Unknown author"}</p>
                     {book.startedAt && (
-                      <p className="mt-2 text-sm text-teal/80">
+                      <p className="mt-2 text-sm text-teal">
                         Started {formatDistanceToNow(book.startedAt, { addSuffix: true })}
                       </p>
                     )}

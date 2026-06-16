@@ -31,7 +31,7 @@ export function BookInfo({
   const isEmpty = !hasDescription && subjects.length === 0 && authorsWithBios.length === 0
 
   if (isEmpty) {
-    return <p className="text-sm text-teal/70">No extra details found for this book.</p>
+    return <p className="text-sm text-teal/90">No extra details found for this book.</p>
   }
 
   return (

@@ -20,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 // Calm, non-alarmist badge styling per status.
 const badgeStyle: Record<string, string> = {
   comfortable: "bg-mint/40 text-teal",
-  soon: "bg-[var(--color-due-soon)]/20 text-[#9a6b12]",
+  soon: "bg-[var(--color-due-soon)]/20 text-[var(--color-due-soon)]",
   overdue: "bg-[var(--color-overdue)]/15 text-[var(--color-overdue)]",
 }
 
@@ -105,7 +105,7 @@ function LoanRow({ loan }: { loan: Doc<"books"> }) {
           {loan.title}
         </Link>
         <p className="text-sm text-teal">{loan.authors[0] ?? "Unknown author"}</p>
-        {loan.libraryName && <p className="mt-0.5 text-xs text-teal/80">{loan.libraryName}</p>}
+        {loan.libraryName && <p className="mt-0.5 text-xs text-teal">{loan.libraryName}</p>}
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {loan.dueDate !== undefined && (
@@ -114,7 +114,7 @@ function LoanRow({ loan }: { loan: Doc<"books"> }) {
             </span>
           )}
           {loan.dueDate !== undefined && (
-            <span className="text-xs text-teal/70">due {format(loan.dueDate, "MMM d, yyyy")}</span>
+            <span className="text-xs text-teal/90">due {format(loan.dueDate, "MMM d, yyyy")}</span>
           )}
         </div>
 

@@ -90,7 +90,7 @@ function DefaultMeta({ book }: { book: BookInfoSubject }) {
   if (book.firstPublishYear) bits.push(String(book.firstPublishYear))
   if (book.pageCount) bits.push(`${book.pageCount} pages`)
   return (
-    <div className="flex flex-col gap-1 text-sm text-teal/80">
+    <div className="flex flex-col gap-1 text-sm text-teal">
       {bits.length > 0 && <span>{bits.join(" · ")}</span>}
       {book.isbn && <span className="font-mono text-xs">ISBN {book.isbn}</span>}
     </div>

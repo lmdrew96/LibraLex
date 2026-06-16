@@ -97,7 +97,7 @@ export default function FriendsPage() {
       {/* Your friend code */}
       <section className="mb-6 rounded-[24px] border border-lavender bg-card p-5">
         <h2 className="mb-1 text-sm font-semibold text-teal">Your friend code</h2>
-        <p className="mb-3 text-sm text-teal/70">
+        <p className="mb-3 text-sm text-teal/90">
           Share this so a friend can add you. They paste the code, or open your link.
         </p>
         {profile === undefined ? (
@@ -226,7 +226,7 @@ export default function FriendsPage() {
                 <button
                   onClick={() => unfriend(friend.friendshipId, friend.displayName)}
                   aria-label={`Remove ${friend.displayName}`}
-                  className="rounded-full p-2 text-teal/70 transition-colors hover:bg-lavender hover:text-[var(--color-overdue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+                  className="rounded-full p-2 text-teal/90 transition-colors hover:bg-lavender hover:text-[var(--color-overdue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
                 >
                   <X className="h-4 w-4" />
                 </button>
