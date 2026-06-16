@@ -9,6 +9,7 @@ import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
 import { AppShell } from "@/components/app-shell"
 import { BookCover } from "@/components/book-cover"
+import { BookInfoDialog } from "@/components/book-info-dialog"
 import { EmptyState } from "@/components/empty-state"
 import { FriendAvatar } from "@/components/friend-avatar"
 import { Button } from "@/components/ui/button"
@@ -78,14 +79,23 @@ export default function RecsPage() {
               key={rec._id}
               className="relative flex gap-4 rounded-[24px] border border-lavender bg-card p-4"
             >
-              <div className="w-20 shrink-0">
-                <BookCover
-                  coverId={rec.coverId}
-                  coverUrlFallback={rec.coverUrlFallback}
-                  title={rec.title}
-                  size="M"
-                />
-              </div>
+              <BookInfoDialog
+                book={rec}
+                trigger={
+                  <button
+                    type="button"
+                    aria-label={`More about ${rec.title}`}
+                    className="w-20 shrink-0 self-start rounded-md transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                  >
+                    <BookCover
+                      coverId={rec.coverId}
+                      coverUrlFallback={rec.coverUrlFallback}
+                      title={rec.title}
+                      size="M"
+                    />
+                  </button>
+                }
+              />
               <div className="min-w-0 flex-1 pt-0.5">
                 <div className="mb-1.5 flex items-center gap-2 text-xs text-teal">
                   <FriendAvatar
