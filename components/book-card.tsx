@@ -1,6 +1,5 @@
 import Link from "next/link"
-import type { Doc } from "@/convex/_generated/dataModel"
-import type { ReadStatus } from "@/lib/types"
+import type { BookWithCover, ReadStatus } from "@/lib/types"
 import { READ_STATUS_LABELS } from "@/lib/types"
 import { dueLabel, loanStatus } from "@/lib/loans"
 import { cn } from "@/lib/utils"
@@ -24,7 +23,7 @@ const dueColor: Record<string, string> = {
 }
 
 /** A single cover tile linking to the book's detail page. */
-export function BookCard({ book, showDue = false }: { book: Doc<"books">; showDue?: boolean }) {
+export function BookCard({ book, showDue = false }: { book: BookWithCover; showDue?: boolean }) {
   const activeLoan = book.dueDate !== undefined && book.returned !== true
   return (
     <Link
@@ -33,6 +32,7 @@ export function BookCard({ book, showDue = false }: { book: Doc<"books">; showDu
     >
       <div className="relative transition-transform group-hover:-translate-y-0.5">
         <BookCover
+          coverUrl={book.coverUrl}
           coverId={book.coverId}
           coverUrlFallback={book.coverUrlFallback}
           title={book.title}

@@ -1,15 +1,15 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { format } from "date-fns"
-import { ArrowLeft, Share2, Star, Trash2 } from "lucide-react"
+import { ArrowLeft, ImagePlus, Share2, Star, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
-import type { Ownership, ReadStatus } from "@/lib/types"
+import type { BookWithCover, Ownership, ReadStatus } from "@/lib/types"
 import { OWNERSHIP_LABELS, READ_STATUS_LABELS } from "@/lib/types"
 import { dueLabel, loanStatus } from "@/lib/loans"
 import { useBookInfo } from "@/lib/use-book-info"
@@ -145,7 +145,14 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
 
       <div className="flex flex-col gap-6 sm:flex-row sm:gap-8">
         <div className="mx-auto w-44 shrink-0 sm:mx-0">
-          <BookCover coverId={book.coverId} coverUrlFallback={book.coverUrlFallback} title={book.title} size="L" />
+          <BookCover
+            coverUrl={book.coverUrl}
+            coverId={book.coverId}
+            coverUrlFallback={book.coverUrlFallback}
+            title={book.title}
+            size="L"
+          />
+          <CoverControls book={book} />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -249,6 +256,84 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
         <BookInfo data={bookInfo} loading={bookInfoLoading} />
       </section>
     </AppShell>
+  )
+}
+
+// Optional user-uploaded cover. Picks an image, POSTs it to a Convex upload URL,
+// then attaches the returned storageId to the book. The live query swaps the
+// cover in automatically. "Remove" reverts to the auto-fetched cover.
+const MAX_COVER_BYTES = 5 * 1024 * 1024 // 5 MB
+
+function CoverControls({ book }: { book: BookWithCover }) {
+  const generateUploadUrl = useMutation(api.books.generateCoverUploadUrl)
+  const setBookCover = useMutation(api.books.setBookCover)
+  const removeBookCover = useMutation(api.books.removeBookCover)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const hasCustom = book.coverStorageId !== undefined
+
+  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // let the user re-pick the same file later
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file.")
+      return
+    }
+    if (file.size > MAX_COVER_BYTES) {
+      toast.error("That image is over 5 MB — pick a smaller one.")
+      return
+    }
+    setBusy(true)
+    try {
+      const uploadUrl = await generateUploadUrl()
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      })
+      if (!res.ok) throw new Error("upload failed")
+      const { storageId } = (await res.json()) as { storageId: Id<"_storage"> }
+      await setBookCover({ id: book._id, storageId })
+      toast.success("Cover updated.")
+    } catch {
+      toast.error("Couldn't upload that cover. Try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onRemove = async () => {
+    setBusy(true)
+    try {
+      await removeBookCover({ id: book._id })
+      toast.success("Reverted to the default cover.")
+    } catch {
+      toast.error("Couldn't remove the cover.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col items-center gap-1.5">
+      <input ref={inputRef} type="file" accept="image/*" hidden onChange={onPick} />
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      >
+        <ImagePlus className="h-4 w-4" />
+        {busy ? "Uploading…" : hasCustom ? "Replace cover" : "Upload cover"}
+      </Button>
+      {hasCustom && !busy && (
+        <button onClick={onRemove} className="text-xs text-teal hover:underline">
+          Remove custom cover
+        </button>
+      )}
+    </div>
   )
 }
 

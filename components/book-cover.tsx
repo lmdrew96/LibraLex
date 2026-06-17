@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 type CoverSize = "S" | "M" | "L"
 
 type BookCoverProps = {
+  coverUrl?: string // user-uploaded cover (Convex storage) — takes precedence over all
   coverId?: number
   coverUrlFallback?: string
   title: string
@@ -31,16 +32,19 @@ const OL_RESOLUTION: Record<CoverSize, "S" | "M" | "L"> = { S: "M", M: "L", L: "
  * box is always reserved so nothing shifts while the image loads.
  */
 export function BookCover({
+  coverUrl,
   coverId,
   coverUrlFallback,
   title,
   size = "M",
   className,
 }: BookCoverProps) {
-  // Ordered candidate sources: OL by-id (with ?default=false so a missing cover
-  // 404s and triggers onError instead of returning a blank), then Google fallback.
+  // Ordered candidate sources: a user-uploaded cover wins, then OL by-id (with
+  // ?default=false so a missing cover 404s and triggers onError instead of
+  // returning a blank), then the Google/iTunes fallback URL.
   const sources = useMemo(() => {
     const list: string[] = []
+    if (coverUrl) list.push(coverUrl)
     if (coverId !== undefined) {
       list.push(
         `https://covers.openlibrary.org/b/id/${coverId}-${OL_RESOLUTION[size]}.jpg?default=false`,
@@ -48,7 +52,7 @@ export function BookCover({
     }
     if (coverUrlFallback) list.push(coverUrlFallback)
     return list
-  }, [coverId, coverUrlFallback, size])
+  }, [coverUrl, coverId, coverUrlFallback, size])
 
   const [idx, setIdx] = useState(0)
   // Reset the source chain if the book (its cover inputs) changes.

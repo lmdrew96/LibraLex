@@ -2,8 +2,15 @@
 // Doc<"books"> — import that where you need a saved record. These types cover the
 // pre-save search payload and the small string unions reused across the UI.
 
+import type { Doc } from "@/convex/_generated/dataModel"
+
 export type Ownership = "owned" | "wishlist" | "library"
 export type ReadStatus = "unread" | "reading" | "read"
+
+/** A stored book plus its resolved cover URL. The book queries resolve an
+ *  uploaded `coverStorageId` to a servable `coverUrl`; surfaces that render the
+ *  owner's own books use this so a custom cover shows everywhere consistently. */
+export type BookWithCover = Doc<"books"> & { coverUrl?: string }
 
 /** A normalized result from the book search service (`/api/search`). */
 export type BookSearchResult = {

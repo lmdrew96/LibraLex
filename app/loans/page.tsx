@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { format } from "date-fns"
 import { Library, RotateCcw, CalendarClock } from "lucide-react"
 import { api } from "@/convex/_generated/api"
-import type { Doc } from "@/convex/_generated/dataModel"
+import type { BookWithCover } from "@/lib/types"
 import { defaultDueDate, dueLabel, fromDateInput, loanStatus, toDateInput } from "@/lib/loans"
 import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
@@ -66,7 +66,7 @@ export default function LoansPage() {
   )
 }
 
-function LoanRow({ loan }: { loan: Doc<"books"> }) {
+function LoanRow({ loan }: { loan: BookWithCover }) {
   const returnBook = useMutation(api.books.returnBook)
   const renewLoan = useMutation(api.books.renewLoan)
 
@@ -97,7 +97,7 @@ function LoanRow({ loan }: { loan: Doc<"books"> }) {
   return (
     <div className="flex flex-col gap-4 rounded-[24px] border border-lavender bg-card p-4 sm:flex-row">
       <Link href={`/book/${loan._id}`} className="w-16 shrink-0">
-        <BookCover coverId={loan.coverId} coverUrlFallback={loan.coverUrlFallback} title={loan.title} size="M" />
+        <BookCover coverUrl={loan.coverUrl} coverId={loan.coverId} coverUrlFallback={loan.coverUrlFallback} title={loan.title} size="M" />
       </Link>
 
       <div className="min-w-0 flex-1">

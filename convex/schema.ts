@@ -17,6 +17,7 @@ export default defineSchema({
     isbn: v.optional(v.string()),
     coverId: v.optional(v.number()), // Open Library cover_i — render covers from THIS (rate-limit-free)
     coverUrlFallback: v.optional(v.string()), // Google Books thumbnail when coverId missing
+    coverStorageId: v.optional(v.id("_storage")), // user-uploaded cover (Convex file storage) — overrides the auto ones when set
     workKey: v.optional(v.string()), // /works/OL...W stable id
     firstPublishYear: v.optional(v.number()),
     pageCount: v.optional(v.number()),

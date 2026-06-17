@@ -41,6 +41,20 @@ const getOwnedBook = async (
   return book
 }
 
+// Attach the servable URL for a user-uploaded cover (Convex file storage). Books
+// without an uploaded cover return coverUrl: undefined and fall back to the
+// auto-fetched coverId/coverUrlFallback in <BookCover>. The getUrl lookup only
+// runs for books that actually have an upload, so listing a full shelf is cheap.
+const withCoverUrl = async (
+  ctx: QueryCtx,
+  book: Doc<"books">,
+): Promise<Doc<"books"> & { coverUrl?: string }> => ({
+  ...book,
+  coverUrl: book.coverStorageId
+    ? ((await ctx.storage.getUrl(book.coverStorageId)) ?? undefined)
+    : undefined,
+})
+
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // All of the user's books, optionally filtered by ownership and/or readStatus,
@@ -81,7 +95,8 @@ export const listBooks = query({
       rows = rows.filter((b) => b.readStatus === args.readStatus)
     }
 
-    return rows.sort((a, b) => b.addedAt - a.addedAt)
+    const sorted = rows.sort((a, b) => b.addedAt - a.addedAt)
+    return await Promise.all(sorted.map((b) => withCoverUrl(ctx, b)))
   },
 })
 
@@ -93,7 +108,7 @@ export const getBook = query({
     if (!userId) return null
     const book = await ctx.db.get(args.id)
     if (!book || book.userId !== userId) return null
-    return book
+    return await withCoverUrl(ctx, book)
   },
 })
 
@@ -109,9 +124,10 @@ export const listLoans = query({
         q.eq("userId", userId).eq("ownership", "library"),
       )
       .collect()
-    return loans
+    const active = loans
       .filter((b) => b.returned !== true)
       .sort((a, b) => (a.dueDate ?? Infinity) - (b.dueDate ?? Infinity))
+    return await Promise.all(active.map((b) => withCoverUrl(ctx, b)))
   },
 })
 
@@ -252,12 +268,56 @@ export const returnBook = mutation({
   },
 })
 
-// Remove a book from the catalog entirely.
+// Remove a book from the catalog entirely. Also drops any uploaded cover so we
+// don't leave an orphaned file in storage.
 export const deleteBook = mutation({
   args: { id: v.id("books") },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx)
-    await getOwnedBook(ctx, userId, args.id)
+    const book = await getOwnedBook(ctx, userId, args.id)
+    if (book.coverStorageId) await ctx.storage.delete(book.coverStorageId)
     await ctx.db.delete(args.id)
+  },
+})
+
+// ── Cover upload (Convex file storage) ──────────────────────────────────────
+// Optional user-supplied cover, for books with a wrong/ugly/missing auto cover.
+// Flow: client calls generateCoverUploadUrl → POSTs the file to that URL → gets
+// a storageId → calls setBookCover. The book queries resolve the id to a URL.
+
+// Short-lived signed URL the client POSTs the image bytes to. Auth-gated so only
+// signed-in users can mint one.
+export const generateCoverUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireUserId(ctx)
+    return await ctx.storage.generateUploadUrl()
+  },
+})
+
+// Attach an uploaded image as the book's cover. Replacing an existing custom
+// cover deletes the previous file first, so storage never accumulates orphans.
+export const setBookCover = mutation({
+  args: { id: v.id("books"), storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx)
+    const book = await getOwnedBook(ctx, userId, args.id)
+    if (book.coverStorageId && book.coverStorageId !== args.storageId) {
+      await ctx.storage.delete(book.coverStorageId)
+    }
+    await ctx.db.patch(args.id, { coverStorageId: args.storageId })
+  },
+})
+
+// Drop the uploaded cover and revert to the auto-fetched one (deletes the file).
+export const removeBookCover = mutation({
+  args: { id: v.id("books") },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx)
+    const book = await getOwnedBook(ctx, userId, args.id)
+    if (book.coverStorageId) {
+      await ctx.storage.delete(book.coverStorageId)
+      await ctx.db.patch(args.id, { coverStorageId: undefined })
+    }
   },
 })

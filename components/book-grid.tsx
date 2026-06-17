@@ -1,9 +1,9 @@
-import type { Doc } from "@/convex/_generated/dataModel"
+import type { BookWithCover } from "@/lib/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import { BookCard } from "@/components/book-card"
 
 /** Responsive cover grid: 2 cols on phones → up to 5 on desktop. */
-export function BookGrid({ books, showDue = false }: { books: Doc<"books">[]; showDue?: boolean }) {
+export function BookGrid({ books, showDue = false }: { books: BookWithCover[]; showDue?: boolean }) {
   return (
     <ul className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
       {books.map((book) => (

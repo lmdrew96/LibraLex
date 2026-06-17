@@ -5,7 +5,7 @@ import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { Check, Heart, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
-import type { Doc } from "@/convex/_generated/dataModel"
+import type { BookWithCover } from "@/lib/types"
 import { AppShell } from "@/components/app-shell"
 import { AddBookDialog } from "@/components/add-book-dialog"
 import { BookCover } from "@/components/book-cover"
@@ -45,7 +45,7 @@ export default function WishlistPage() {
   )
 }
 
-function WishlistCard({ book }: { book: Doc<"books"> }) {
+function WishlistCard({ book }: { book: BookWithCover }) {
   const updateBook = useMutation(api.books.updateBook)
   const deleteBook = useMutation(api.books.deleteBook)
 
@@ -74,7 +74,7 @@ function WishlistCard({ book }: { book: Doc<"books"> }) {
         href={`/book/${book._id}`}
         className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
       >
-        <BookCover coverId={book.coverId} coverUrlFallback={book.coverUrlFallback} title={book.title} size="M" />
+        <BookCover coverUrl={book.coverUrl} coverId={book.coverId} coverUrlFallback={book.coverUrlFallback} title={book.title} size="M" />
       </Link>
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-ink">{book.title}</p>

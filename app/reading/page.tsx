@@ -61,6 +61,7 @@ export default function ReadingPage() {
                 >
                   <div className="w-20 shrink-0">
                     <BookCover
+                      coverUrl={book.coverUrl}
                       coverId={book.coverId}
                       coverUrlFallback={book.coverUrlFallback}
                       title={book.title}
