@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
 import { BookCover } from "@/components/book-cover"
 import { BookInfo } from "@/components/book-info"
+import { MoreLikeThis } from "@/components/more-like-this"
 import { RecommendDialog } from "@/components/recommend-dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -33,6 +34,8 @@ const dueColor: Record<string, string> = {
 export default function BookDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const book = useQuery(api.books.getBook, { id: id as Id<"books"> })
+  // Whole library for the "More like this" nearest-neighbour comparison.
+  const allBooks = useQuery(api.books.listBooks, {})
 
   const updateBook = useMutation(api.books.updateBook)
   const checkoutBook = useMutation(api.books.checkoutBook)
@@ -329,6 +332,8 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
           loading={hasCachedInfo ? false : fetchedLoading}
         />
       </section>
+
+      <MoreLikeThis bookId={book._id} books={allBooks ?? []} />
     </AppShell>
   )
 }

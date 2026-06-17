@@ -71,19 +71,45 @@ export const sanitizeYear = (year: number | undefined): number | undefined => {
 // common ones later), so this only bounds storage.
 const MAX_SUBJECTS = 30
 
+// Open Library mixes administrative/catalog tags into `subjects` that aren't
+// thematic and poison content similarity + the "shared: …" explanations. Drop
+// them. Exact matches are BISAC filler; substrings catch the tag families.
+const NOISE_EXACT = new Set(["general", "nyt", "fiction in english", "import"])
+const NOISE_SUBSTRINGS = [
+  "staff pick",
+  "reading level",
+  "accessible book",
+  "protected daisy",
+  "in library",
+  "overdrive",
+  "large print",
+  "large type",
+  "lending library",
+  "new york times bestseller",
+  "internet archive",
+]
+const isNoiseSubject = (s: string): boolean =>
+  s.length < 2 ||
+  /^\d+$/.test(s) ||
+  NOISE_EXACT.has(s) ||
+  NOISE_SUBSTRINGS.some((n) => s.includes(n))
+
 /**
- * Clean an OL subject list for storage: lowercase, trim, dedupe, drop empties,
- * cap. Shared by the enrich pipeline (lib/enrich) and the backfill so subjects
- * are stored identically regardless of source path.
+ * Clean an OL subject list for storage: split comma-bundled BISAC strings
+ * ("Fiction, Family life, General" → 3 tokens), lowercase, trim, drop catalog
+ * noise + empties, dedupe, cap. Shared by the enrich pipeline (convex/enrich) and
+ * the backfill so subjects are stored identically regardless of source path.
  */
 export const normalizeSubjects = (subjects: string[]): string[] => {
   const seen = new Set<string>()
   const out: string[] = []
   for (const raw of subjects) {
-    const s = raw.trim().toLowerCase()
-    if (s && !seen.has(s)) {
-      seen.add(s)
-      out.push(s)
+    for (const part of raw.split(",")) {
+      const s = part.trim().toLowerCase()
+      if (s && !isNoiseSubject(s) && !seen.has(s)) {
+        seen.add(s)
+        out.push(s)
+      }
     }
   }
   return out.slice(0, MAX_SUBJECTS)

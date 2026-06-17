@@ -10,6 +10,8 @@ import { AppShell } from "@/components/app-shell"
 import { AddBookDialog } from "@/components/add-book-dialog"
 import { BookGrid, BookGridSkeleton } from "@/components/book-grid"
 import { EmptyState } from "@/components/empty-state"
+import { ReadNext } from "@/components/read-next"
+import { RecommendedForYou } from "@/components/recommended-for-you"
 
 type Filter = "all" | ReadStatus
 type Sort = "added" | "title" | "author"
@@ -29,6 +31,9 @@ const SORTS: { key: Sort; label: string }[] = [
 
 export default function ShelfPage() {
   const books = useQuery(api.books.listBooks, { ownership: "owned" })
+  // Whole library (any shelf) feeds the recommender — taste comes from read books
+  // regardless of ownership, candidates from unread owned + wishlist.
+  const allBooks = useQuery(api.books.listBooks, {})
   const [filter, setFilter] = useState<Filter>("all")
   const [sort, setSort] = useState<Sort>("added")
 
@@ -53,7 +58,14 @@ export default function ShelfPage() {
           action={<AddBookDialog />}
         />
       ) : (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
+          {allBooks && allBooks.length > 0 && (
+            <>
+              <ReadNext books={allBooks} />
+              <RecommendedForYou books={allBooks} />
+            </>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               {FILTERS.map(({ key, label }) => (
