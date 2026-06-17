@@ -21,6 +21,7 @@ export type BookInfoSubject = {
   isbn?: string
   coverId?: number
   coverUrlFallback?: string
+  coverUrl?: string
   firstPublishYear?: number
   pageCount?: number
 }
@@ -64,6 +65,7 @@ export function BookInfoDialog({
           <div className="flex gap-4">
             <div className="w-24 shrink-0">
               <BookCover
+                coverUrl={book.coverUrl}
                 coverId={book.coverId}
                 coverUrlFallback={book.coverUrlFallback}
                 title={book.title}

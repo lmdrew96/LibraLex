@@ -88,6 +88,7 @@ export default function RecsPage() {
                     className="w-20 shrink-0 self-start rounded-md transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 focus-visible:ring-offset-card"
                   >
                     <BookCover
+                      coverUrl={rec.coverUrl}
                       coverId={rec.coverId}
                       coverUrlFallback={rec.coverUrlFallback}
                       title={rec.title}

@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { Check, Send, Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
 import { cn } from "@/lib/utils"
 import { BookCover } from "@/components/book-cover"
 import { FriendAvatar } from "@/components/friend-avatar"
@@ -19,13 +20,17 @@ import {
 } from "@/components/ui/dialog"
 
 // The bibliographic snapshot a rec carries. Accepts a stored Doc<"books"> or a
-// SharedBook from a friend's shelf — both structurally satisfy this.
+// SharedBook from a friend's shelf — both structurally satisfy this. coverUrl is
+// for the dialog's own preview; coverStorageId rides along to the rec so the
+// recipient sees your uploaded cover (present only when recommending your own book).
 export type RecommendableBook = {
   title: string
   authors: string[]
   isbn?: string
   coverId?: number
   coverUrlFallback?: string
+  coverUrl?: string
+  coverStorageId?: Id<"_storage">
   workKey?: string
   firstPublishYear?: number
   pageCount?: number
@@ -70,6 +75,7 @@ export function RecommendDialog({
         isbn: book.isbn,
         coverId: book.coverId,
         coverUrlFallback: book.coverUrlFallback,
+        coverStorageId: book.coverStorageId,
         workKey: book.workKey,
         firstPublishYear: book.firstPublishYear,
         pageCount: book.pageCount,
@@ -101,6 +107,7 @@ export function RecommendDialog({
           <div className="mb-5 flex items-center gap-4">
             <div className="w-14 shrink-0">
               <BookCover
+                coverUrl={book.coverUrl}
                 coverId={book.coverId}
                 coverUrlFallback={book.coverUrlFallback}
                 title={book.title}

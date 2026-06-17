@@ -30,6 +30,11 @@ export const getInbox = query({
         const sender = await profileFor(ctx, rec.fromUserId)
         return {
           ...rec,
+          // Resolve the sender's uploaded cover; null (file deleted) falls back to
+          // the snapshot's coverId/coverUrlFallback in <BookCover>.
+          coverUrl: rec.coverStorageId
+            ? ((await ctx.storage.getUrl(rec.coverStorageId)) ?? undefined)
+            : undefined,
           from: sender ? toPublicProfile(sender) : null,
         }
       }),
@@ -65,6 +70,7 @@ export const sendRec = mutation({
     isbn: v.optional(v.string()),
     coverId: v.optional(v.number()),
     coverUrlFallback: v.optional(v.string()),
+    coverStorageId: v.optional(v.id("_storage")),
     workKey: v.optional(v.string()),
     firstPublishYear: v.optional(v.number()),
     pageCount: v.optional(v.number()),
@@ -86,6 +92,7 @@ export const sendRec = mutation({
       isbn: args.isbn,
       coverId: args.coverId,
       coverUrlFallback: args.coverUrlFallback,
+      coverStorageId: args.coverStorageId,
       workKey: args.workKey,
       firstPublishYear: args.firstPublishYear,
       pageCount: args.pageCount,
@@ -120,6 +127,9 @@ export const addRecToShelf = mutation({
     const rec = await ctx.db.get(args.recId)
     if (!rec || rec.toUserId !== me) throw new Error("Recommendation not found.")
 
+    // Deliberately NOT carrying coverStorageId: it points at the sender's file,
+    // and deleting either book deletes that file. The accepted book keeps the
+    // auto cover; the recipient can upload their own from its detail page.
     await ctx.db.insert("books", {
       userId: me,
       title: rec.title,

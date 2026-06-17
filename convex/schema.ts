@@ -94,6 +94,10 @@ export default defineSchema({
     isbn: v.optional(v.string()),
     coverId: v.optional(v.number()),
     coverUrlFallback: v.optional(v.string()),
+    // The sender's uploaded cover, if any. Best-effort: it points at the sender's
+    // book file, so it's resolved to a URL at read time and falls back to
+    // coverId/coverUrlFallback if the sender later deletes the book (file gone).
+    coverStorageId: v.optional(v.id("_storage")),
     workKey: v.optional(v.string()),
     firstPublishYear: v.optional(v.number()),
     pageCount: v.optional(v.number()),

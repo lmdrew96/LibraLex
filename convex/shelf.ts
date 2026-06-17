@@ -15,6 +15,7 @@ export type SharedBook = {
   authors: string[]
   coverId?: number
   coverUrlFallback?: string
+  coverUrl?: string // resolved URL for the owner's uploaded cover, when set
   workKey?: string
   isbn?: string
   firstPublishYear?: number
@@ -67,9 +68,16 @@ export const getFriendShelf = query({
 
     return {
       profile: toPublicProfile(profile),
-      books: books
-        .sort((a, b) => b.addedAt - a.addedAt)
-        .map(toSharedBook),
+      books: await Promise.all(
+        books
+          .sort((a, b) => b.addedAt - a.addedAt)
+          .map(async (b) => ({
+            ...toSharedBook(b),
+            coverUrl: b.coverStorageId
+              ? ((await ctx.storage.getUrl(b.coverStorageId)) ?? undefined)
+              : undefined,
+          })),
+      ),
     }
   },
 })
