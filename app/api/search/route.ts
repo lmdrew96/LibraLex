@@ -6,15 +6,22 @@ import type { BookSearchResult } from "@/lib/types"
 // results Open Library has no cover for. Runs server-side so no CORS and no key
 // ever reaches the client. Client debounces (~300ms) — we don't debounce here.
 
+// Open Library is slow AND flaky: text search.json runs 5–8s, and its ISBN index
+// is eventually-consistent (a just-valid ISBN often returns [] on the first hit,
+// then resolves on a retry — the "works on the 2nd/3rd try" report). We retry
+// here so the user doesn't have to, and raise the function budget so a slow-but-
+// valid response isn't killed mid-flight (Vercel default ceilings are low).
+export const maxDuration = 30
+
 const OPEN_LIBRARY_FIELDS =
   "title,author_name,isbn,cover_i,first_publish_year,number_of_pages_median,key"
 
 // Bound worst-case Google Books calls per search (most OL results have a cover_i).
 const MAX_COVER_BACKFILLS = 6
-// Open Library's search.json is routinely slow (5–8s observed) — be patient with
-// the primary fetch. The Google backfill is secondary, so keep its budget short
-// so it can't pad the overall response.
-const OPEN_LIBRARY_TIMEOUT_MS = 12000
+// Per-attempt timeouts, sized so retries fit inside maxDuration. Text search is
+// the slow path (patient); the ISBN lookup is an exact-match query (fast).
+const OL_TEXT_TIMEOUT_MS = 10000
+const OL_ISBN_TIMEOUT_MS = 6000
 const GOOGLE_TIMEOUT_MS = 3000
 const ITUNES_TIMEOUT_MS = 3000
 
@@ -133,11 +140,36 @@ const fetchFallbackCover = async (book: BookSearchResult): Promise<string | null
 
 // Fetch + normalize an Open Library search.json URL. Throws on a non-OK response
 // so callers can map failures to a status code.
-const fetchOpenLibrary = async (olUrl: string): Promise<BookSearchResult[]> => {
-  const res = await fetchWithTimeout(olUrl, OPEN_LIBRARY_TIMEOUT_MS)
+const fetchOpenLibrary = async (olUrl: string, timeoutMs: number): Promise<BookSearchResult[]> => {
+  const res = await fetchWithTimeout(olUrl, timeoutMs)
   if (!res.ok) throw new Error(`Open Library responded ${res.status}`)
   const data = (await res.json()) as { docs?: OpenLibraryDoc[] }
   return (data.docs ?? []).map(mapDoc).filter((b): b is BookSearchResult => b !== null)
+}
+
+/**
+ * Retry an async attempt against Open Library's flakiness. Errors (timeouts,
+ * 5xx) always retry until attempts run out. `retryOn` additionally retries a
+ * *successful* result — used for the ISBN path, where OL's lagging index returns
+ * an empty 200 that a moment later resolves. The final attempt's value is always
+ * returned (we don't discard a legit empty result); only all-errors throws.
+ */
+const withRetry = async <T>(
+  attempt: () => Promise<T>,
+  { attempts, backoffMs, retryOn }: { attempts: number; backoffMs: number; retryOn?: (r: T) => boolean },
+): Promise<T> => {
+  let lastErr: unknown
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, backoffMs * i))
+    try {
+      const result = await attempt()
+      if (i < attempts - 1 && retryOn?.(result)) continue
+      return result
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr ?? new Error("Open Library: retries exhausted")
 }
 
 // Backfill covers Open Library lacks, in parallel, capped and fault-tolerant.
@@ -163,8 +195,15 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
     let results: BookSearchResult[]
     try {
-      results = await fetchOpenLibrary(
-        `https://openlibrary.org/search.json?isbn=${isbn}&limit=1&fields=${OPEN_LIBRARY_FIELDS}`,
+      // Retry on an empty result too: OL's ISBN index lags, so a valid code
+      // routinely misses on the first hit and resolves moments later.
+      results = await withRetry(
+        () =>
+          fetchOpenLibrary(
+            `https://openlibrary.org/search.json?isbn=${isbn}&limit=1&fields=${OPEN_LIBRARY_FIELDS}`,
+            OL_ISBN_TIMEOUT_MS,
+          ),
+        { attempts: 3, backoffMs: 350, retryOn: (r) => r.length === 0 },
       )
     } catch {
       return NextResponse.json({ results: [], error: "Lookup failed. Try again." }, { status: 504 })
@@ -181,8 +220,15 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
   let results: BookSearchResult[]
   try {
-    results = await fetchOpenLibrary(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10&fields=${OPEN_LIBRARY_FIELDS}`,
+    // Retry on error only — an empty text result is a legitimate "no matches",
+    // not a transient failure, so we don't want to slow that path down.
+    results = await withRetry(
+      () =>
+        fetchOpenLibrary(
+          `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10&fields=${OPEN_LIBRARY_FIELDS}`,
+          OL_TEXT_TIMEOUT_MS,
+        ),
+      { attempts: 2, backoffMs: 400 },
     )
   } catch {
     return NextResponse.json({ results: [], error: "Search timed out. Try again." }, { status: 504 })

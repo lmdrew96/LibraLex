@@ -114,6 +114,37 @@ const asEnum = <T extends string>(val: unknown, allowed: readonly T[]): T | unde
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+// ── Loan date-math (TZ-aware) ────────────────────────────────────────────────
+// Convex runs in UTC, but "due in N days" is a calendar-day count on the USER'S
+// local zone — comparing a midnight-ish dueDate against a mid-day `now` in UTC
+// floors a 21-day gap to 20 at the timezone boundary. So we resolve each instant
+// to its civil (wall-clock) date in the user's stored zone, then diff those dates.
+// Mirrors lib/loans.daysUntilDue on the client. If the runtime lacks IANA tz data
+// (or no zone is stored), we fall back to UTC — still correct for same-zone-as-UTC
+// users and for any daytime checkout.
+
+/** Civil date "YYYY-MM-DD" for `ms` in `tz`; UTC if tz is missing/unsupported.
+ *  (Convex returns an absent optional as null, so accept that too.) */
+const civilDate = (ms: number, tz?: string | null): string => {
+  if (tz) {
+    try {
+      // en-CA formats as ISO-style YYYY-MM-DD.
+      return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(ms))
+    } catch {
+      // runtime without full ICU, or an unknown zone — fall through to UTC
+    }
+  }
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+/** Whole calendar days from `now` until `dueDate`, on the user's local day
+ *  boundaries. Positive = days left, 0 = due today, negative = overdue. */
+const daysUntilDue = (dueDate: number, now: number, tz?: string | null): number => {
+  const due = Date.parse(`${civilDate(dueDate, tz)}T00:00:00Z`)
+  const today = Date.parse(`${civilDate(now, tz)}T00:00:00Z`)
+  return Math.round((due - today) / DAY_MS)
+}
+
 // ── Open Library enrichment for add_to_wishlist ──────────────────────────────────
 // A slim, fault-tolerant cousin of /api/search (which can't be shared across the
 // Next/Convex boundary). Top OL result only; any failure falls back to bare insert.
@@ -203,16 +234,22 @@ async function dispatch(
 
     case "active_loans": {
       const loans = await ctx.runQuery(internal.mcpData.activeLoansForUser, { userId })
+      const tz = await ctx.runQuery(internal.mcpData.timeZoneForUser, { userId })
       const now = Date.now()
-      const formatted = loans.map((l) => ({
-        title: l.title,
-        authors: l.authors,
-        readStatus: l.readStatus,
-        libraryName: l.libraryName,
-        dueDate: l.dueDate ? new Date(l.dueDate).toISOString().slice(0, 10) : undefined,
-        dueInDays: l.dueDate ? Math.round((l.dueDate - now) / DAY_MS) : undefined,
-        overdue: l.dueDate !== undefined && l.dueDate < now,
-      }))
+      const formatted = loans.map((l) => {
+        const dueInDays = l.dueDate !== undefined ? daysUntilDue(l.dueDate, now, tz) : undefined
+        return {
+          title: l.title,
+          authors: l.authors,
+          readStatus: l.readStatus,
+          libraryName: l.libraryName,
+          dueDate: l.dueDate !== undefined ? civilDate(l.dueDate, tz) : undefined,
+          dueInDays,
+          // Overdue once the due calendar day has passed — "due today" (0) is not
+          // overdue. Matches lib/loans.loanStatus on the client.
+          overdue: dueInDays !== undefined && dueInDays < 0,
+        }
+      })
       return textContent({ count: formatted.length, loans: formatted })
     }
 

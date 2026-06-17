@@ -50,6 +50,11 @@ export default defineSchema({
     displayName: v.string(),
     avatarUrl: v.optional(v.string()),
     friendCode: v.string(), // e.g. "SHELF-7K2Q" — unique, ambiguity-free charset
+    // IANA timezone (e.g. "America/New_York"), captured browser-side on profile
+    // sync. The frontend does loan date-math in the browser's local zone; the MCP
+    // door runs on Convex (UTC), so it reads this to count "due in N days" on the
+    // user's calendar-day boundaries instead of UTC's. Absent until first sync.
+    timeZone: v.optional(v.string()),
     // Secret bearer token for the MCP door (convex/http.ts). Absent until the user
     // generates one in Settings; rotating/revoking just rewrites/clears it. Unlike
     // the human-friendly friendCode, this carries real entropy — it grants read

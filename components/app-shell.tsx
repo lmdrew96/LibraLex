@@ -34,7 +34,10 @@ function useProfileSync() {
 
   useEffect(() => {
     if (!isLoaded || !user) return
-    void ensureProfile({ displayName, avatarUrl })
+    // Capture the browser's IANA zone so server-side surfaces (the MCP loan
+    // countdown) can do date-math on the user's local day boundaries, not UTC.
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    void ensureProfile({ displayName, avatarUrl, timeZone })
   }, [isLoaded, user, displayName, avatarUrl, ensureProfile])
 }
 

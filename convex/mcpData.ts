@@ -126,6 +126,20 @@ export const activeLoansForUser = internalQuery({
   },
 })
 
+// The caller's stored IANA timezone (e.g. "America/New_York"), or undefined if
+// they haven't synced a profile yet. The action layer uses it to count loan
+// due-days on the user's local calendar, not UTC.
+export const timeZoneForUser = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    const profile = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique()
+    return profile?.timeZone
+  },
+})
+
 const normalizeTitle = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, " ")
 
 // Add a book to the user's wishlist from chat ("Coru, add X to my wishlist").

@@ -88,18 +88,30 @@ export const getProfileByCode = query({
 // authenticated load (see AppShell), so it also keeps name/avatar fresh. Returns
 // the friend code so the client never has to round-trip again.
 export const ensureProfile = mutation({
-  args: { displayName: v.string(), avatarUrl: v.optional(v.string()) },
+  args: {
+    displayName: v.string(),
+    avatarUrl: v.optional(v.string()),
+    timeZone: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx)
     const displayName = args.displayName.trim() || "Reader"
     const existing = await profileFor(ctx, userId)
 
     if (existing) {
+      // Only patch timeZone when supplied — never wipe a stored zone if a caller
+      // omits it.
+      const tzChanged = args.timeZone !== undefined && existing.timeZone !== args.timeZone
       if (
         existing.displayName !== displayName ||
-        existing.avatarUrl !== args.avatarUrl
+        existing.avatarUrl !== args.avatarUrl ||
+        tzChanged
       ) {
-        await ctx.db.patch(existing._id, { displayName, avatarUrl: args.avatarUrl })
+        await ctx.db.patch(existing._id, {
+          displayName,
+          avatarUrl: args.avatarUrl,
+          ...(args.timeZone !== undefined ? { timeZone: args.timeZone } : {}),
+        })
       }
       return existing.friendCode
     }
@@ -110,6 +122,7 @@ export const ensureProfile = mutation({
       displayName,
       avatarUrl: args.avatarUrl,
       friendCode,
+      timeZone: args.timeZone,
       createdAt: Date.now(),
     })
     return friendCode
