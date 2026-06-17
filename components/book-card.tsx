@@ -6,9 +6,14 @@ import { dueLabel, loanStatus } from "@/lib/loans"
 import { cn } from "@/lib/utils"
 import { BookCover } from "@/components/book-cover"
 
+// Three mutually-distinct dots within the cool palette. Reading (deep indigo)
+// and Read (light meadow) are separated on BOTH hue and luminance (~4:1) — the
+// cerulean "gold" token sat too close to meadow green to tell apart at 12px.
+// Luminance is the channel that survives color-vision deficiency, so the dark↔
+// light split matters as much as the hue.
 const statusDot: Record<ReadStatus, string> = {
   unread: "bg-card ring-1 ring-teal/40",
-  reading: "bg-gold",
+  reading: "bg-indigo",
   read: "bg-green",
 }
 
