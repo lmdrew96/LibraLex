@@ -83,6 +83,10 @@ export const enrichAllBooks = internalAction({
         pageCount: b.pageCount,
       })
 
+      // Never blank a populated field when a flaky fetch comes back empty — the
+      // enrichment sources are non-deterministic run-to-run, so re-runs must only
+      // add/improve, never erase. (Biblio fields already fall back to the existing
+      // values inside enrichBook, so they can't go empty here.)
       const next = {
         authors: enriched.authors,
         coverId: enriched.coverId,
@@ -90,10 +94,10 @@ export const enrichAllBooks = internalAction({
         workKey: enriched.workKey,
         firstPublishYear: enriched.firstPublishYear,
         pageCount: enriched.pageCount,
-        description: enriched.description,
-        categories: enriched.categories,
-        subjects: enriched.subjects,
-        authorBios: enriched.authorBios,
+        description: enriched.description ?? b.description,
+        categories: enriched.categories ?? b.categories,
+        subjects: enriched.subjects ?? b.subjects,
+        authorBios: enriched.authorBios ?? b.authorBios,
       }
 
       const changedFields =

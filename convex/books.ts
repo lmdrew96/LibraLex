@@ -268,18 +268,20 @@ export const applyEnrichment = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx)
-    await getOwnedBook(ctx, userId, args.id)
+    const book = await getOwnedBook(ctx, userId, args.id)
+    // Preserve existing enrichment when a flaky re-fetch returns empty — a
+    // re-fetch should only improve a record, never blank it out.
     await ctx.db.patch(args.id, {
       authors: normalizeAuthors(args.authors),
-      coverId: args.coverId,
-      coverUrlFallback: args.coverUrlFallback,
-      workKey: args.workKey,
-      firstPublishYear: sanitizeYear(args.firstPublishYear),
-      pageCount: args.pageCount,
-      description: args.description,
-      categories: args.categories,
-      subjects: args.subjects ? normalizeSubjects(args.subjects) : undefined,
-      authorBios: args.authorBios,
+      coverId: args.coverId ?? book.coverId,
+      coverUrlFallback: args.coverUrlFallback ?? book.coverUrlFallback,
+      workKey: args.workKey ?? book.workKey,
+      firstPublishYear: sanitizeYear(args.firstPublishYear) ?? book.firstPublishYear,
+      pageCount: args.pageCount ?? book.pageCount,
+      description: args.description ?? book.description,
+      categories: args.categories ?? book.categories,
+      subjects: args.subjects?.length ? normalizeSubjects(args.subjects) : book.subjects,
+      authorBios: args.authorBios ?? book.authorBios,
     })
   },
 })
