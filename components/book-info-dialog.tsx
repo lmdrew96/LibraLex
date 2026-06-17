@@ -47,6 +47,7 @@ export function BookInfoDialog({
     workKey: open ? book.workKey : undefined,
     title: open ? book.title : "",
     author: open ? book.authors[0] : undefined,
+    isbn: open ? book.isbn : undefined,
   })
 
   return (

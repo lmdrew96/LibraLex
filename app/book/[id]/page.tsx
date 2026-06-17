@@ -46,6 +46,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     workKey: book?.workKey,
     title: book?.title ?? "",
     author: book?.authors?.[0],
+    isbn: book?.isbn,
   })
 
   if (book === undefined) {

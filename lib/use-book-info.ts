@@ -9,10 +9,12 @@ export function useBookInfo({
   workKey,
   title,
   author,
+  isbn,
 }: {
   workKey?: string
   title: string
   author?: string
+  isbn?: string
 }): { data: BookInfo | null; loading: boolean } {
   const [data, setData] = useState<BookInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -32,6 +34,7 @@ export function useBookInfo({
     if (workKey) qs.set("workKey", workKey)
     if (title) qs.set("title", title)
     if (author) qs.set("author", author)
+    if (isbn) qs.set("isbn", isbn)
 
     fetch(`/api/book-info?${qs.toString()}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? (r.json() as Promise<BookInfo>) : null))
@@ -48,7 +51,7 @@ export function useBookInfo({
       })
 
     return () => ctrl.abort()
-  }, [workKey, title, author])
+  }, [workKey, title, author, isbn])
 
   return { data, loading }
 }

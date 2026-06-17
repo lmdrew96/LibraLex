@@ -115,7 +115,7 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
       } else {
         setScannedIsbn(isbn)
         setStep("manual")
-        toast("Scanned book isn't in Open Library — add its details.", { icon: "📖" })
+        toast("We couldn't find that book — add its details.", { icon: "📖" })
       }
     } catch {
       setScannedIsbn(isbn)

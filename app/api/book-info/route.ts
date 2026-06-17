@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server"
 import type { BookInfo } from "@/lib/types"
 
-// On-demand book enrichment: summary, subjects, author bios. Source strategy
-// mirrors /api/search — Open Library primary, iTunes (keyless) as the fallback
-// for descriptions OL lacks. Google Books is intentionally NOT used here: keyless
-// Google is globally quota-throttled (429), so it can't be relied on. Result is
-// stable reference data (same for every user), so we cache it hard and never
-// store it on the book record.
+// On-demand book enrichment: summary, subjects, author bios. Open Library is the
+// source for subjects + author bios (OL-native data Google Books doesn't expose);
+// when OL has no description, Google Books fills it in (ISBN-exact when we have
+// the ISBN, else a title+author query). iTunes is retired. Result is stable
+// reference data (same for every user), so we cache it hard and never store it on
+// the book record.
 
 const UA = "LibraLex/0.4 (libra.adhdesigns.dev)"
 const OL_TIMEOUT_MS = 8000
-const ITUNES_TIMEOUT_MS = 3000
+const GOOGLE_TIMEOUT_MS = 3000
 const MAX_AUTHORS = 2
 const MAX_SUBJECTS = 12
 
@@ -54,7 +54,8 @@ const cleanOpenLibrary = (raw: string): string =>
     .replace(/\n{3,}/g, "\n\n")
     .trim()
 
-// iTunes descriptions are HTML — strip tags and decode the common entities.
+// Google Books descriptions can carry light HTML (<p>, <br>, <b>) — strip tags
+// and decode the common entities so we render clean plain text.
 const stripHtml = (html: string): string =>
   html
     .replace(/<br\s*\/?>/gi, "\n")
@@ -114,30 +115,52 @@ const fetchAuthor = async (
   }
 }
 
-// Keyless iTunes description fallback, guarded by a loose title-overlap check so
-// we don't attach a different book's blurb (same guard as the cover fallback).
-const fetchItunesDescription = async (
+// Google Books description fallback for books Open Library has no summary for.
+// Prefers an ISBN-exact query (no guard needed — exact match); without an ISBN it
+// falls back to a title+author query with a loose title-overlap guard so we don't
+// attach a different book's blurb. Keyless Google Books shares a global daily
+// quota (HTTP 429); set GOOGLE_BOOKS_API_KEY to raise it — no code change needed.
+const fetchGoogleDescription = async (
+  isbn: string | undefined,
   title: string,
   author: string | undefined,
 ): Promise<string | undefined> => {
   try {
-    const term = [title, author].filter(Boolean).join(" ")
+    const apiKey = process.env.GOOGLE_BOOKS_API_KEY
+    const keyParam = apiKey ? `&key=${apiKey}` : ""
+
+    // ISBN-exact: trust items[0] directly.
+    if (isbn) {
+      const res = await fetchWithTimeout(
+        `https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&maxResults=1${keyParam}`,
+        GOOGLE_TIMEOUT_MS,
+      )
+      if (res.ok) {
+        const data = (await res.json()) as { items?: Array<{ volumeInfo?: { description?: string } }> }
+        const desc = data.items?.[0]?.volumeInfo?.description
+        if (desc) return stripHtml(desc)
+      }
+    }
+
+    // No ISBN (or ISBN missed): title+author query with an overlap guard.
+    const q = [`intitle:${title}`, author ? `inauthor:${author}` : ""].filter(Boolean).join("+")
     const res = await fetchWithTimeout(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=ebook&limit=5`,
-      ITUNES_TIMEOUT_MS,
+      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5${keyParam}`,
+      GOOGLE_TIMEOUT_MS,
     )
     if (!res.ok) return undefined
     const data = (await res.json()) as {
-      results?: Array<{ description?: string; trackName?: string }>
+      items?: Array<{ volumeInfo?: { description?: string; title?: string } }>
     }
     const want = normalizeTitle(title)
     const key = want.slice(0, 12)
-    const match = (data.results ?? []).find((item) => {
-      if (!item.description) return false
-      const got = normalizeTitle(item.trackName ?? "")
+    const match = (data.items ?? []).find((item) => {
+      const info = item.volumeInfo
+      if (!info?.description) return false
+      const got = normalizeTitle(info.title ?? "")
       return Boolean(got) && (got.includes(key) || want.includes(got.slice(0, 12)))
     })
-    return match?.description ? stripHtml(match.description) : undefined
+    return match?.volumeInfo?.description ? stripHtml(match.volumeInfo.description) : undefined
   } catch {
     return undefined
   }
@@ -148,6 +171,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const workKey = params.get("workKey")?.trim() ?? ""
   const title = params.get("title")?.trim() ?? ""
   const author = params.get("author")?.trim() || undefined
+  const isbn = params.get("isbn")?.replace(/[^0-9Xx]/g, "") || undefined
 
   let description: string | undefined
   let subjects: string[] = []
@@ -162,13 +186,13 @@ export async function GET(request: Request): Promise<NextResponse> {
       const resolved = await Promise.all(work.authorKeys.map(fetchAuthor))
       authors = resolved.filter((a): a is { name: string; bio?: string } => a !== null)
     } catch {
-      // fall through to the iTunes description fallback
+      // fall through to the Google Books description fallback
     }
   }
 
-  // 2) iTunes fallback for the description when OL had none.
-  if (!description && title) {
-    description = await fetchItunesDescription(title, author)
+  // 2) Google Books fallback for the description when OL had none.
+  if (!description && (isbn || title)) {
+    description = await fetchGoogleDescription(isbn, title, author)
   }
 
   const body: BookInfo = { description, subjects, authors }

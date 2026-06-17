@@ -41,7 +41,7 @@ export function BookCover({
 }: BookCoverProps) {
   // Ordered candidate sources: a user-uploaded cover wins, then OL by-id (with
   // ?default=false so a missing cover 404s and triggers onError instead of
-  // returning a blank), then the Google/iTunes fallback URL.
+  // returning a blank), then the Google Books fallback URL.
   const sources = useMemo(() => {
     const list: string[] = []
     if (coverUrl) list.push(coverUrl)
