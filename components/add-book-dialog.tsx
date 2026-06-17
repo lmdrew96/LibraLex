@@ -5,8 +5,8 @@ import { useMutation } from "convex/react"
 import { toast } from "sonner"
 import { ArrowLeft, BookPlus, Loader2, ScanBarcode, Search } from "lucide-react"
 import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
-import type { BookSearchResult, EnrichedBook, Ownership } from "@/lib/types"
+import type { BookSearchResult, Ownership } from "@/lib/types"
+import { bookArgs, enrichInBackground } from "@/lib/enrich-on-add"
 import { defaultDueDate, dueLabel, fromDateInput, toDateInput } from "@/lib/loans"
 import { useBookSearch } from "@/lib/use-book-search"
 import { BarcodeScanner } from "@/components/barcode-scanner"
@@ -22,68 +22,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 
 type Step = "search" | "scan" | "ownership" | "manual"
-
-// Map a search result to the addBook mutation's bibliographic args.
-const bookArgs = (b: BookSearchResult) => ({
-  title: b.title,
-  authors: b.authors,
-  isbn: b.isbn,
-  coverId: b.coverId,
-  coverUrlFallback: b.coverUrlFallback,
-  workKey: b.workKey,
-  firstPublishYear: b.firstPublishYear,
-  pageCount: b.pageCount,
-})
-
-// Enrich-once: after a book lands on the shelf, fetch its full metadata
-// (description, subjects, author bios) once and patch it in. Best-effort and
-// fire-and-forget — a slow/failed lookup never blocks the add or loses the book.
-// Skipped for manual entries with nothing to look up by.
-type ApplyEnrichmentArgs = {
-  id: Id<"books">
-  authors: string[]
-  coverId?: number
-  coverUrlFallback?: string
-  workKey?: string
-  firstPublishYear?: number
-  pageCount?: number
-  description?: string
-  categories?: string[]
-  subjects?: string[]
-  authorBios?: { name: string; bio?: string }[]
-}
-
-const enrichInBackground = async (
-  id: Id<"books">,
-  candidate: BookSearchResult,
-  apply: (args: ApplyEnrichmentArgs) => Promise<unknown>,
-): Promise<void> => {
-  if (!candidate.isbn && !candidate.workKey) return
-  try {
-    const res = await fetch("/api/enrich", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(candidate),
-    })
-    if (!res.ok) return
-    const { book } = (await res.json()) as { book: EnrichedBook }
-    await apply({
-      id,
-      authors: book.authors,
-      coverId: book.coverId,
-      coverUrlFallback: book.coverUrlFallback,
-      workKey: book.workKey,
-      firstPublishYear: book.firstPublishYear,
-      pageCount: book.pageCount,
-      description: book.description,
-      categories: book.categories,
-      subjects: book.subjects,
-      authorBios: book.authorBios,
-    })
-  } catch {
-    // best-effort enrichment — the book is already saved with its base data
-  }
-}
 
 export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
   const addBook = useMutation(api.books.addBook)

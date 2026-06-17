@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
 import { BookCover } from "@/components/book-cover"
 import { BookInfo } from "@/components/book-info"
+import { FriendPicks } from "@/components/friend-picks"
 import { MoreLikeThis } from "@/components/more-like-this"
 import { RecommendDialog } from "@/components/recommend-dialog"
 import { Button } from "@/components/ui/button"
@@ -334,6 +335,12 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
       </section>
 
       <MoreLikeThis bookId={book._id} books={allBooks ?? []} />
+      <FriendPicks
+        library={allBooks ?? []}
+        target={book}
+        title="On your friends' shelves"
+        layout="grid"
+      />
     </AppShell>
   )
 }

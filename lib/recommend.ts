@@ -9,15 +9,24 @@
 //   moreLikeThis    — nearest neighbours of one book (works with zero ratings)
 //   readNext        — single best pick weighing taste against due-date urgency
 
-// The minimal book shape the engine needs. Doc<"books"> / BookWithCover satisfy it
-// structurally, so callers pass their full records and get them back unchanged.
-export type RecBook = {
-  _id: string
-  title: string
-  authors: string[]
+// The content fields the scorer reads — everything tokenize() needs. Any external
+// candidate (a friend's book, a catalog result) only has to satisfy this to be
+// ranked, so the engine never has to know where a candidate came from.
+export type Tokenizable = {
+  authors?: string[]
   subjects?: string[]
   firstPublishYear?: number
   pageCount?: number
+}
+
+// A library book: tokenizable content plus the shelf relationship that builds the
+// taste profile (read state, rating) and the read-next signal (due date).
+// Doc<"books"> / BookWithCover satisfy it structurally, so callers pass their full
+// records and get them back unchanged.
+export type RecBook = Tokenizable & {
+  _id: string
+  title: string
+  authors: string[]
   ownership: "owned" | "wishlist" | "library"
   readStatus: "unread" | "reading" | "read"
   rating?: number
@@ -37,7 +46,7 @@ const decadeOf = (year: number | undefined): string | null =>
 
 /** Namespaced, deduped feature tokens for a book. Subjects are the primary signal;
  *  authors/decade/length round out the profile. */
-export const tokenize = (b: RecBook): string[] => {
+export const tokenize = (b: Tokenizable): string[] => {
   const tokens = new Set<string>()
   for (const s of b.subjects ?? []) {
     const v = s.trim().toLowerCase()
@@ -56,7 +65,7 @@ export const tokenize = (b: RecBook): string[] => {
 
 // Smoothed IDF across the whole library: log((N+1)/(df+1)) + 1. Never zero, so a
 // token shared by every book still contributes a little; rare tokens dominate.
-const computeIdf = (books: RecBook[]): Map<string, number> => {
+const computeIdf = (books: Tokenizable[]): Map<string, number> => {
   const df = new Map<string, number>()
   for (const b of books) for (const tok of tokenize(b)) df.set(tok, (df.get(tok) ?? 0) + 1)
   const idf = new Map<string, number>()
@@ -66,7 +75,7 @@ const computeIdf = (books: RecBook[]): Map<string, number> => {
 }
 
 // Book vector = IDF weight per present token (term frequency is 1 — tokens are a set).
-const bookVector = (b: RecBook, idf: Map<string, number>): Map<string, number> => {
+const bookVector = (b: Tokenizable, idf: Map<string, number>): Map<string, number> => {
   const v = new Map<string, number>()
   for (const tok of tokenize(b)) v.set(tok, idf.get(tok) ?? 0)
   return v
@@ -188,6 +197,69 @@ export const moreLikeThis = <T extends RecBook>(
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
+}
+
+// ── External candidate pools (friends' shelves, catalog discovery) ─────────────
+// These score candidates that are NOT on the user's shelf. The IDF spans the
+// library ∪ candidates so both sides share one vector space; deduping the pool
+// against the shelf is the caller's job (it owns the candidate identity).
+
+// Candidate subjects that overlap a reference vector, strongest IDF weight first —
+// the raw material for an explanation ("shared: fantasy, mystery").
+const sharedSubjects = (
+  ref: Map<string, number>,
+  cand: Map<string, number>,
+  max = 3,
+): string[] => {
+  const shared: [string, number][] = []
+  for (const [tok, val] of cand) {
+    if (tok.startsWith("subj:") && ref.has(tok)) shared.push([tok.slice(5), val])
+  }
+  return shared.sort((a, b) => b[1] - a[1]).slice(0, max).map((s) => s[0])
+}
+
+export type PoolPick<T> = { book: T; score: number; sharedSubjects: string[] }
+
+/** Rank an external candidate pool by similarity to the user's taste profile.
+ *  Returns every candidate that shares any signal (no slice — the caller applies
+ *  source-specific boosts before taking its top N). Empty when there's no taste
+ *  yet, mirroring recommendForYou's cold-start. */
+export const recommendFromPool = <T extends Tokenizable>(
+  library: RecBook[],
+  candidates: T[],
+): PoolPick<T>[] => {
+  if (candidates.length === 0) return []
+  const idf = computeIdf([...library, ...candidates])
+  const profile = tasteProfile(library, idf)
+  if (profile.size === 0) return []
+  return candidates
+    .map((book) => {
+      const vec = bookVector(book, idf)
+      return { book, score: cosine(profile, vec), sharedSubjects: sharedSubjects(profile, vec) }
+    })
+    .filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+}
+
+/** Rank an external candidate pool by similarity to one target book. Content-only
+ *  (no ratings needed), so it works on a cold/unrated shelf — the cross-shelf
+ *  analogue of moreLikeThis. */
+export const moreLikeThisFromPool = <T extends Tokenizable>(
+  target: Tokenizable,
+  library: RecBook[],
+  candidates: T[],
+): PoolPick<T>[] => {
+  if (candidates.length === 0) return []
+  const idf = computeIdf([...library, target, ...candidates])
+  const targetVec = bookVector(target, idf)
+  if (targetVec.size === 0) return []
+  return candidates
+    .map((book) => {
+      const vec = bookVector(book, idf)
+      return { book, score: cosine(targetVec, vec), sharedSubjects: sharedSubjects(targetVec, vec) }
+    })
+    .filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score)
 }
 
 // Library-loan urgency in [0,1]: overdue = 1, ramps down to ~0 three weeks out.

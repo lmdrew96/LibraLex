@@ -29,19 +29,27 @@ export type BookInfoSubject = {
 /** Reusable book-info dialog: cover + summary + subjects + author bios, fetched
  *  lazily on open. Callers drop in context via the optional slots — `headerExtra`
  *  (beside the cover, e.g. a friend's rating/review) and `footer` (an action bar).
- *  With no headerExtra it falls back to the book's own publication meta. */
+ *  With no headerExtra it falls back to the book's own publication meta.
+ *  Uncontrolled by default; pass `open`/`onOpenChange` to drive it (e.g. to close
+ *  it after an action in the footer). */
 export function BookInfoDialog({
   book,
   trigger,
   headerExtra,
   footer,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   book: BookInfoSubject
   trigger: ReactNode
   headerExtra?: ReactNode
   footer?: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
 
   const { data, loading } = useBookInfo({
     workKey: open ? book.workKey : undefined,

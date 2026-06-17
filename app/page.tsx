@@ -10,6 +10,7 @@ import { AppShell } from "@/components/app-shell"
 import { AddBookDialog } from "@/components/add-book-dialog"
 import { BookGrid, BookGridSkeleton } from "@/components/book-grid"
 import { EmptyState } from "@/components/empty-state"
+import { FriendPicks } from "@/components/friend-picks"
 import { ReadNext } from "@/components/read-next"
 import { RecommendedForYou } from "@/components/recommended-for-you"
 
@@ -63,6 +64,7 @@ export default function ShelfPage() {
             <>
               <ReadNext books={allBooks} />
               <RecommendedForYou books={allBooks} />
+              <FriendPicks library={allBooks} title="From your friends" layout="carousel" />
             </>
           )}
 

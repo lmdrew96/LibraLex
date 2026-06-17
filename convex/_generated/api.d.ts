@@ -10,6 +10,7 @@
 
 import type * as backfill from "../backfill.js";
 import type * as books from "../books.js";
+import type * as discover from "../discover.js";
 import type * as enrich from "../enrich.js";
 import type * as friends from "../friends.js";
 import type * as http from "../http.js";
@@ -30,6 +31,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   backfill: typeof backfill;
   books: typeof books;
+  discover: typeof discover;
   enrich: typeof enrich;
   friends: typeof friends;
   http: typeof http;

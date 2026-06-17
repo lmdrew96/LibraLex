@@ -20,6 +20,7 @@ export type SharedBook = {
   isbn?: string
   firstPublishYear?: number
   pageCount?: number
+  subjects?: string[] // the recommender's primary signal — carried so cross-shelf recs can score a friend's books
   ownership: Doc<"books">["ownership"]
   readStatus: Doc<"books">["readStatus"]
   rating?: number
@@ -37,6 +38,7 @@ const toSharedBook = (b: Doc<"books">): SharedBook => ({
   isbn: b.isbn,
   firstPublishYear: b.firstPublishYear,
   pageCount: b.pageCount,
+  subjects: b.subjects,
   ownership: b.ownership,
   readStatus: b.readStatus,
   rating: b.rating,

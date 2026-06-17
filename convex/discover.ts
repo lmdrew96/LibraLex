@@ -1,0 +1,163 @@
+import { query } from "./_generated/server"
+import type { Doc } from "./_generated/dataModel"
+import { getUserId } from "./util"
+import { profileFor, toPublicProfile, type PublicProfile } from "./users"
+
+// Cross-shelf recommendation candidates (the "friends" source, Phase 1). Returns
+// books that live on an accepted friend's shelf but NOT on yours, each tagged with
+// the friend(s) who vouch for it. The content-based recommender (lib/recommend.ts)
+// scores these against your taste profile client-side; this query only assembles
+// and dedupes the pool — it does no ranking.
+
+// One friend's endorsement of a book: who they are + how they relate to it. Drives
+// the explanation ("Maya loved this") and the ranking boost.
+export type FriendEndorsement = PublicProfile & {
+  rating?: number
+  readStatus: Doc<"books">["readStatus"]
+  review?: string
+}
+
+// A book on a friend's shelf, carrying the bibliographic + subject fields the
+// recommender scores and the add flow needs, plus its endorsers.
+export type FriendCandidate = {
+  dedupeKey: string
+  title: string
+  authors: string[]
+  isbn?: string
+  coverId?: number
+  coverUrlFallback?: string
+  coverUrl?: string
+  workKey?: string
+  firstPublishYear?: number
+  pageCount?: number
+  subjects?: string[]
+  endorsers: FriendEndorsement[]
+}
+
+// Stable identity for a book across shelves: prefer the OL work key, then a
+// normalized ISBN, then title+first-author. Two friends owning "the same book"
+// collapse to one candidate; a book already on your shelf is excluded by key.
+const dedupeKey = (b: Doc<"books">): string => {
+  const work = b.workKey?.trim()
+  if (work) return `w:${work}`
+  const isbn = b.isbn?.replace(/[^0-9Xx]/g, "").toLowerCase()
+  if (isbn) return `i:${isbn}`
+  return `t:${b.title.trim().toLowerCase()}|${(b.authors[0] ?? "").trim().toLowerCase()}`
+}
+
+// A book a friend has actually engaged with is a real recommendation; a book
+// still sitting unread+unrated on their wishlist is not (it's their to-read, not
+// a vouch). So everything qualifies EXCEPT unread, unrated wishlist items.
+const isVouchworthy = (b: Doc<"books">): boolean =>
+  !(b.ownership === "wishlist" && b.readStatus === "unread" && b.rating === undefined)
+
+// How strongly an endorsement should sort within the (rare) overflow cap below —
+// loved beats read beats merely-owned. Mirrors the client-side ranking boost.
+const endorsementStrength = (e: FriendEndorsement): number =>
+  (e.rating ?? 0) * 2 + (e.readStatus === "read" ? 2 : e.readStatus === "reading" ? 1 : 0)
+
+// Cap the pool shipped to the client. Friend libraries are small today, so this
+// rarely bites; when it does, the strongest endorsements survive (taste ranking
+// then happens client-side over the survivors).
+const MAX_CANDIDATES = 200
+
+// Books a friend has, scored against your taste — assembled here, ranked client-side.
+export const friendCandidates = query({
+  args: {},
+  handler: async (ctx): Promise<FriendCandidate[]> => {
+    const me = await getUserId(ctx)
+    if (!me) return []
+
+    // Accepted friendships in either direction → the set of friend user ids.
+    const asRequester = await ctx.db
+      .query("friendships")
+      .withIndex("by_requester", (q) => q.eq("requesterId", me))
+      .collect()
+    const asAddressee = await ctx.db
+      .query("friendships")
+      .withIndex("by_addressee", (q) => q.eq("addresseeId", me))
+      .collect()
+    const friendIds = [...asRequester, ...asAddressee]
+      .filter((f) => f.status === "accepted")
+      .map((f) => (f.requesterId === me ? f.addresseeId : f.requesterId))
+    if (friendIds.length === 0) return []
+
+    // Keys already on my shelf — anything matching is not a discovery for me.
+    const mine = await ctx.db
+      .query("books")
+      .withIndex("by_user", (q) => q.eq("userId", me))
+      .collect()
+    const mineKeys = new Set(mine.map(dedupeKey))
+
+    // Walk each friend's shelf, merging duplicate works across friends into one
+    // candidate that accrues every endorser.
+    const byKey = new Map<string, FriendCandidate & { _coverStorageId?: Doc<"books">["coverStorageId"] }>()
+    for (const friendId of friendIds) {
+      const profile = await profileFor(ctx, friendId)
+      if (!profile) continue
+      const endorser = toPublicProfile(profile)
+      const books = await ctx.db
+        .query("books")
+        .withIndex("by_user", (q) => q.eq("userId", friendId))
+        .collect()
+
+      for (const b of books) {
+        if (!isVouchworthy(b)) continue
+        const key = dedupeKey(b)
+        if (mineKeys.has(key)) continue
+
+        const endorsement: FriendEndorsement = {
+          ...endorser,
+          rating: b.rating,
+          readStatus: b.readStatus,
+          review: b.review?.trim() ? b.review.trim() : undefined,
+        }
+
+        const existing = byKey.get(key)
+        if (existing) {
+          existing.endorsers.push(endorsement)
+          // Opportunistically fill any bibliographic gaps from this copy.
+          existing.coverId ??= b.coverId
+          existing.coverUrlFallback ??= b.coverUrlFallback
+          existing.firstPublishYear ??= b.firstPublishYear
+          existing.pageCount ??= b.pageCount
+          if (!existing.subjects?.length && b.subjects?.length) existing.subjects = b.subjects
+          if (!existing._coverStorageId && b.coverStorageId) existing._coverStorageId = b.coverStorageId
+          continue
+        }
+
+        byKey.set(key, {
+          dedupeKey: key,
+          title: b.title,
+          authors: b.authors,
+          isbn: b.isbn,
+          coverId: b.coverId,
+          coverUrlFallback: b.coverUrlFallback,
+          workKey: b.workKey,
+          firstPublishYear: b.firstPublishYear,
+          pageCount: b.pageCount,
+          subjects: b.subjects,
+          endorsers: [endorsement],
+          _coverStorageId: b.coverStorageId,
+        })
+      }
+    }
+
+    const candidates = [...byKey.values()].sort((a, b) => {
+      const sa = Math.max(...a.endorsers.map(endorsementStrength))
+      const sb = Math.max(...b.endorsers.map(endorsementStrength))
+      return sb - sa
+    })
+
+    // Resolve uploaded covers (a friend's own file, same as getFriendShelf does)
+    // only for the survivors, then drop the internal storage-id field.
+    return await Promise.all(
+      candidates.slice(0, MAX_CANDIDATES).map(async ({ _coverStorageId, ...c }) => ({
+        ...c,
+        coverUrl: _coverStorageId
+          ? ((await ctx.storage.getUrl(_coverStorageId)) ?? undefined)
+          : undefined,
+      })),
+    )
+  },
+})
