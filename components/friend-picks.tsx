@@ -7,6 +7,7 @@ import type { FriendEndorsement } from "@/convex/discover"
 import type { BookWithCover } from "@/lib/types"
 import { moreLikeThisFromPool, recommendFromPool } from "@/lib/recommend"
 import { OffShelfPick } from "@/components/off-shelf-pick"
+import { PickShelf } from "@/components/pick-shelf"
 
 // Endorsement → ranking multiplier applied on top of the content-similarity score.
 // A friend who LOVED a book pulls it above one merely owned; extra endorsers add a
@@ -77,47 +78,22 @@ export function FriendPicks({
 
   if (ranked.length === 0) return null
 
-  if (layout === "carousel") {
-    return (
-      <section>
-        <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-teal">
-          <Users className="h-4 w-4" />
-          {title}
-        </h2>
-        <ul className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
-          {ranked.map((p) => (
-            <li key={p.book.dedupeKey} className="shrink-0">
-              <OffShelfPick
-                book={p.book}
-                reason={explain(p.book.endorsers, p.sharedSubjects)}
-                endorsers={p.book.endorsers}
-                layout="carousel"
-              />
-            </li>
-          ))}
-        </ul>
-      </section>
-    )
-  }
-
   return (
-    <section className="mt-10 border-t border-lavender pt-6">
-      <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-teal">
-        <Users className="h-4 w-4" />
-        {title}
-      </h2>
-      <ul className="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 md:grid-cols-5">
-        {ranked.map((p) => (
-          <li key={p.book.dedupeKey}>
-            <OffShelfPick
-              book={p.book}
-              reason={explain(p.book.endorsers, p.sharedSubjects)}
-              endorsers={p.book.endorsers}
-              layout="grid"
-            />
-          </li>
-        ))}
-      </ul>
-    </section>
+    <PickShelf
+      title={title}
+      icon={Users}
+      layout={layout}
+      items={ranked.map((p) => ({
+        key: p.book.dedupeKey,
+        node: (
+          <OffShelfPick
+            book={p.book}
+            reason={explain(p.book.endorsers, p.sharedSubjects)}
+            endorsers={p.book.endorsers}
+            layout={layout}
+          />
+        ),
+      }))}
+    />
   )
 }

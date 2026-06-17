@@ -126,6 +126,25 @@ const cosine = (a: Map<string, number>, b: Map<string, number>): number => {
 export const tasteSourceCount = (books: RecBook[]): number =>
   books.filter((b) => b.readStatus === "read" || b.readStatus === "reading").length
 
+/** The subjects that most define a user's taste — frequency across read/reading
+ *  books, weighted by rating. Drives catalog discovery queries (the seed subjects
+ *  we expand from). Empty until there's read history with subjects. */
+export const topTasteSubjects = (books: RecBook[], limit = 4): string[] => {
+  const tally = new Map<string, number>()
+  for (const b of books) {
+    if (b.readStatus !== "read" && b.readStatus !== "reading") continue
+    const w = ratingWeight(b)
+    for (const s of b.subjects ?? []) {
+      const v = s.trim()
+      if (v) tally.set(v, (tally.get(v) ?? 0) + w)
+    }
+  }
+  return [...tally.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([subject]) => subject)
+}
+
 // Build the "Because you loved X — shared: a, b" line: the read book sharing the
 // most IDF-weighted tokens with the candidate (ties lean to higher ratings).
 const explain = (
