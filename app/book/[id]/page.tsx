@@ -6,10 +6,10 @@ import Link from "next/link"
 import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { format } from "date-fns"
-import { ArrowLeft, ImagePlus, Share2, Star, Trash2 } from "lucide-react"
+import { ArrowLeft, ImagePlus, Loader2, RefreshCw, Share2, Star, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
-import type { BookWithCover, Ownership, ReadStatus } from "@/lib/types"
+import type { BookInfo as BookInfoData, BookWithCover, EnrichedBook, Ownership, ReadStatus } from "@/lib/types"
 import { OWNERSHIP_LABELS, READ_STATUS_LABELS } from "@/lib/types"
 import { dueLabel, loanStatus } from "@/lib/loans"
 import { useBookInfo } from "@/lib/use-book-info"
@@ -37,17 +37,68 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
   const updateBook = useMutation(api.books.updateBook)
   const checkoutBook = useMutation(api.books.checkoutBook)
   const deleteBook = useMutation(api.books.deleteBook)
+  const applyEnrichment = useMutation(api.books.applyEnrichment)
   const router = useRouter()
 
   const [review, setReview] = useState<string | null>(null)
+  const [refetching, setRefetching] = useState(false)
 
-  // Enrichment (summary, subjects, author bios). Stays quiet until the book loads.
-  const { data: bookInfo, loading: bookInfoLoading } = useBookInfo({
-    workKey: book?.workKey,
-    title: book?.title ?? "",
-    author: book?.authors?.[0],
-    isbn: book?.isbn,
+  // Prefer the cached enrichment (zero external calls). Fall back to an on-demand
+  // fetch only when those fields aren't populated yet — an older record before the
+  // backfill, or a just-added book still mid-enrich. The hook no-ops on an empty
+  // title, so a cached book makes no request.
+  const hasCachedInfo = Boolean(book?.description || book?.subjects?.length || book?.authorBios?.length)
+  const { data: fetchedInfo, loading: fetchedLoading } = useBookInfo({
+    workKey: hasCachedInfo ? undefined : book?.workKey,
+    title: hasCachedInfo ? "" : (book?.title ?? ""),
+    author: hasCachedInfo ? undefined : book?.authors?.[0],
+    isbn: hasCachedInfo ? undefined : book?.isbn,
   })
+
+  // Re-fetch metadata on demand: re-run the enrich pipeline for this book and
+  // patch the fresh result in. The only path that hits external sources from the
+  // detail view — normal opens read the cached fields below with zero calls.
+  const refetchMetadata = async () => {
+    if (!book || refetching) return
+    setRefetching(true)
+    try {
+      const candidate: EnrichedBook = {
+        title: book.title,
+        authors: book.authors,
+        isbn: book.isbn,
+        coverId: book.coverId,
+        coverUrlFallback: book.coverUrlFallback,
+        workKey: book.workKey,
+        firstPublishYear: book.firstPublishYear,
+        pageCount: book.pageCount,
+      }
+      const res = await fetch("/api/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(candidate),
+      })
+      if (!res.ok) throw new Error("enrich failed")
+      const { book: enriched } = (await res.json()) as { book: EnrichedBook }
+      await applyEnrichment({
+        id: book._id,
+        authors: enriched.authors,
+        coverId: enriched.coverId,
+        coverUrlFallback: enriched.coverUrlFallback,
+        workKey: enriched.workKey,
+        firstPublishYear: enriched.firstPublishYear,
+        pageCount: enriched.pageCount,
+        description: enriched.description,
+        categories: enriched.categories,
+        subjects: enriched.subjects,
+        authorBios: enriched.authorBios,
+      })
+      toast.success("Metadata refreshed.")
+    } catch {
+      toast.error("Couldn't refresh metadata.")
+    } finally {
+      setRefetching(false)
+    }
+  }
 
   if (book === undefined) {
     return (
@@ -252,9 +303,31 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* Summary, subjects, author bios — full width below the main panel. */}
+      {/* Summary, subjects, author bios — full width below the main panel.
+          Read straight from the cached record (no external call on open). */}
       <section className="mt-10 border-t border-lavender pt-6">
-        <BookInfo data={bookInfo} loading={bookInfoLoading} />
+        <div className="mb-4 flex justify-end">
+          <Button variant="outline" size="sm" onClick={refetchMetadata} disabled={refetching}>
+            {refetching ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Re-fetch metadata
+          </Button>
+        </div>
+        <BookInfo
+          data={
+            hasCachedInfo
+              ? ({
+                  description: book.description,
+                  subjects: book.subjects ?? [],
+                  authors: book.authorBios ?? [],
+                } satisfies BookInfoData)
+              : fetchedInfo
+          }
+          loading={hasCachedInfo ? false : fetchedLoading}
+        />
       </section>
     </AppShell>
   )

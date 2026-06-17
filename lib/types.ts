@@ -24,6 +24,12 @@ export type BookSearchResult = {
   workKey?: string
 }
 
+/** A fully enriched, cacheable book record — search-result fields plus the merged
+ *  enrichment (`description`, `categories`, `subjects`, `authorBios`) the enrich-once
+ *  pipeline (`convex/enrich.ts` → `/api/enrich`) writes to Convex so the detail view
+ *  renders with no external calls. Defined in the engine, re-exported here for the UI. */
+export type { EnrichedBook } from "@/convex/enrich"
+
 export const OWNERSHIP_LABELS: Record<Ownership, string> = {
   owned: "Owned",
   wishlist: "Wishlist",

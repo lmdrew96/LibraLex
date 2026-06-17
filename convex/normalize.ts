@@ -67,6 +67,28 @@ export const sanitizeYear = (year: number | undefined): number | undefined => {
   return Math.trunc(year)
 }
 
+// Generous cap on stored subjects — breadth is intentional (TF-IDF down-weights
+// common ones later), so this only bounds storage.
+const MAX_SUBJECTS = 30
+
+/**
+ * Clean an OL subject list for storage: lowercase, trim, dedupe, drop empties,
+ * cap. Shared by the enrich pipeline (lib/enrich) and the backfill so subjects
+ * are stored identically regardless of source path.
+ */
+export const normalizeSubjects = (subjects: string[]): string[] => {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of subjects) {
+    const s = raw.trim().toLowerCase()
+    if (s && !seen.has(s)) {
+      seen.add(s)
+      out.push(s)
+    }
+  }
+  return out.slice(0, MAX_SUBJECTS)
+}
+
 /**
  * Normalize the bibliographic fields shared by every book-write path. Spread the
  * result over the insert/patch so authors + year are always clean on disk.

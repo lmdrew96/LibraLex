@@ -2,7 +2,19 @@ import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
-import { normalizeAuthors, sanitizeYear } from "./normalize"
+import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
+
+// Cached enrichment fields shared by addBook + the re-fetch action. Optional —
+// produced by the enrich-once pipeline (lib/enrich.ts), stored so reads need no
+// external calls.
+const enrichmentValidators = {
+  description: v.optional(v.string()),
+  categories: v.optional(v.array(v.string())),
+  subjects: v.optional(v.array(v.string())),
+  authorBios: v.optional(
+    v.array(v.object({ name: v.string(), bio: v.optional(v.string()) })),
+  ),
+}
 
 // Default library loan period: 3 weeks. It's a default, not a law — every code
 // path that sets a due date keeps it user-editable (see renewLoan).
@@ -145,6 +157,7 @@ export const addBook = mutation({
     workKey: v.optional(v.string()),
     firstPublishYear: v.optional(v.number()),
     pageCount: v.optional(v.number()),
+    ...enrichmentValidators,
     ownership: ownershipValidator,
     readStatus: v.optional(readStatusValidator),
     checkoutDate: v.optional(v.number()),
@@ -166,6 +179,11 @@ export const addBook = mutation({
       workKey: args.workKey,
       firstPublishYear: sanitizeYear(args.firstPublishYear),
       pageCount: args.pageCount,
+      // Cached enrichment (already merged/normalized by the pipeline).
+      description: args.description,
+      categories: args.categories,
+      subjects: args.subjects ? normalizeSubjects(args.subjects) : undefined,
+      authorBios: args.authorBios,
       ownership: args.ownership,
       readStatus: args.readStatus ?? ("unread" as const),
       addedAt: now,
@@ -230,6 +248,39 @@ export const updateBook = mutation({
     }
 
     await ctx.db.patch(args.id, updates)
+  },
+})
+
+// Apply a fresh enrichment to an owned book (the detail page's "Re-fetch
+// metadata" action: client calls /api/enrich, then hands the merged record here).
+// Patches the bibliographic + cached-enrichment fields; leaves the user's title,
+// uploaded cover, rating/review, and shelf state alone.
+export const applyEnrichment = mutation({
+  args: {
+    id: v.id("books"),
+    authors: v.array(v.string()),
+    coverId: v.optional(v.number()),
+    coverUrlFallback: v.optional(v.string()),
+    workKey: v.optional(v.string()),
+    firstPublishYear: v.optional(v.number()),
+    pageCount: v.optional(v.number()),
+    ...enrichmentValidators,
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx)
+    await getOwnedBook(ctx, userId, args.id)
+    await ctx.db.patch(args.id, {
+      authors: normalizeAuthors(args.authors),
+      coverId: args.coverId,
+      coverUrlFallback: args.coverUrlFallback,
+      workKey: args.workKey,
+      firstPublishYear: sanitizeYear(args.firstPublishYear),
+      pageCount: args.pageCount,
+      description: args.description,
+      categories: args.categories,
+      subjects: args.subjects ? normalizeSubjects(args.subjects) : undefined,
+      authorBios: args.authorBios,
+    })
   },
 })
 

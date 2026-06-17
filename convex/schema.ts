@@ -22,6 +22,17 @@ export default defineSchema({
     firstPublishYear: v.optional(v.number()),
     pageCount: v.optional(v.number()),
 
+    // ── cached enrichment (enrich-once pipeline, see lib/enrich.ts) ────────────
+    // Populated once on add (merge of Google Books + Open Library, normalized) so
+    // the detail view renders with ZERO external calls. Refreshed by the manual
+    // "re-fetch metadata" action. All optional — older records backfill in.
+    description: v.optional(v.string()), // GB description, OL work description fallback
+    categories: v.optional(v.array(v.string())), // GB BISAC categories (coarse; drives the comic-guard + future filters)
+    subjects: v.optional(v.array(v.string())), // OL work subjects (granular — recommender fuel)
+    authorBios: v.optional(
+      v.array(v.object({ name: v.string(), bio: v.optional(v.string()) })),
+    ), // OL author records
+
     // ── shelf relationship ────────────────────────────────────────────────────
     ownership: v.union(v.literal("owned"), v.literal("wishlist"), v.literal("library")),
     readStatus: v.union(v.literal("unread"), v.literal("reading"), v.literal("read")),
