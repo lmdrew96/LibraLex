@@ -3,6 +3,7 @@ import { v } from "convex/values"
 import { getUserId, requireUserId } from "./util"
 import { areFriends } from "./friends"
 import { profileFor, toPublicProfile } from "./users"
+import { normalizeAuthors, sanitizeYear } from "./normalize"
 
 // Recommendations can only be added to your own shelf as owned or wishlist —
 // the library-loan path is checkout-specific and not meaningful for a rec.
@@ -133,12 +134,13 @@ export const addRecToShelf = mutation({
     await ctx.db.insert("books", {
       userId: me,
       title: rec.title,
-      authors: rec.authors,
+      // Normalize on write — the snapshot may predate the sender's cleanup.
+      authors: normalizeAuthors(rec.authors),
       isbn: rec.isbn,
       coverId: rec.coverId,
       coverUrlFallback: rec.coverUrlFallback,
       workKey: rec.workKey,
-      firstPublishYear: rec.firstPublishYear,
+      firstPublishYear: sanitizeYear(rec.firstPublishYear),
       pageCount: rec.pageCount,
       ownership: args.ownership,
       readStatus: "unread",

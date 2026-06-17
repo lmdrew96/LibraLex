@@ -1,6 +1,7 @@
 import { internalMutation, internalQuery } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
+import { normalizeAuthors, sanitizeYear } from "./normalize"
 
 // Data layer for the MCP door (convex/http.ts). Every function here is INTERNAL —
 // callable only from other Convex functions, never the public internet. The sole
@@ -171,12 +172,13 @@ export const addWishlistBook = internalMutation({
     await ctx.db.insert("books", {
       userId: args.userId,
       title: args.title,
-      authors: args.authors,
+      // Normalize on write — the MCP door's OL enrichment emits junk too.
+      authors: normalizeAuthors(args.authors),
       isbn: args.isbn,
       coverId: args.coverId,
       coverUrlFallback: args.coverUrlFallback,
       workKey: args.workKey,
-      firstPublishYear: args.firstPublishYear,
+      firstPublishYear: sanitizeYear(args.firstPublishYear),
       pageCount: args.pageCount,
       ownership: "wishlist",
       readStatus: "unread",

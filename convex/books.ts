@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
+import { normalizeAuthors, sanitizeYear } from "./normalize"
 
 // Default library loan period: 3 weeks. It's a default, not a law — every code
 // path that sets a due date keeps it user-editable (see renewLoan).
@@ -157,12 +158,13 @@ export const addBook = mutation({
     const base = {
       userId,
       title: args.title,
-      authors: args.authors,
+      // Normalize on write — source-agnostic cleanup (see convex/normalize.ts).
+      authors: normalizeAuthors(args.authors),
       isbn: args.isbn,
       coverId: args.coverId,
       coverUrlFallback: args.coverUrlFallback,
       workKey: args.workKey,
-      firstPublishYear: args.firstPublishYear,
+      firstPublishYear: sanitizeYear(args.firstPublishYear),
       pageCount: args.pageCount,
       ownership: args.ownership,
       readStatus: args.readStatus ?? ("unread" as const),
@@ -205,6 +207,11 @@ export const updateBook = mutation({
     const now = Date.now()
 
     const updates: Partial<Doc<"books">> = { ...args.patch }
+
+    // Normalize edited author lists the same way writes do.
+    if (args.patch.authors !== undefined) {
+      updates.authors = normalizeAuthors(args.patch.authors)
+    }
 
     if (args.patch.readStatus === "reading" && !book.startedAt) {
       updates.startedAt = now
