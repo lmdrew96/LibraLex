@@ -34,7 +34,16 @@ export default defineSchema({
     ), // OL author records
 
     // ── shelf relationship ────────────────────────────────────────────────────
-    ownership: v.union(v.literal("owned"), v.literal("wishlist"), v.literal("library")),
+    // "none" = read/encountered but not in your possession (a friend's copy, a
+    // returned library book, a digital read). It carries no loan fields and never
+    // shows on the owned shelf / wishlist / loans — it lives in History by
+    // readStatus, and feeds the recommender's taste profile like any other read.
+    ownership: v.union(
+      v.literal("owned"),
+      v.literal("wishlist"),
+      v.literal("library"),
+      v.literal("none"),
+    ),
     readStatus: v.union(v.literal("unread"), v.literal("reading"), v.literal("read")),
     rating: v.optional(v.number()), // 1–5
     review: v.optional(v.string()),

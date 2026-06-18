@@ -27,7 +27,7 @@ export type RecBook = Tokenizable & {
   _id: string
   title: string
   authors: string[]
-  ownership: "owned" | "wishlist" | "library"
+  ownership: "owned" | "wishlist" | "library" | "none"
   readStatus: "unread" | "reading" | "read"
   rating?: number
   dueDate?: number

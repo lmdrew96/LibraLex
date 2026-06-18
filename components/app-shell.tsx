@@ -14,7 +14,7 @@ import { AddBookDialog } from "@/components/add-book-dialog"
 const NAV = [
   { href: "/", label: "Shelf", icon: BookMarked },
   { href: "/search", label: "Search", icon: Search },
-  { href: "/reading", label: "Reading", icon: BookOpen },
+  { href: "/history", label: "History", icon: BookOpen },
   { href: "/wishlist", label: "Wishlist", icon: Heart },
   { href: "/loans", label: "Loans", icon: Library },
   { href: "/friends", label: "Friends", icon: Users },

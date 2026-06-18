@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const READ_STATUSES: ReadStatus[] = ["unread", "reading", "read"]
-const OWNERSHIPS: Ownership[] = ["owned", "wishlist", "library"]
+const OWNERSHIPS: Ownership[] = ["owned", "wishlist", "library", "none"]
 
 const dueColor: Record<string, string> = {
   comfortable: "text-teal",
@@ -170,6 +170,9 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
       if (next === "library") {
         await checkoutBook({ id: book._id })
         toast.success("Moved to library loans — due in 3 weeks. Adjust on the Loans tab.")
+      } else if (next === "none") {
+        await updateBook({ id: book._id, patch: { ownership: next } })
+        toast.success("Marked as read but not owned.")
       } else {
         await updateBook({ id: book._id, patch: { ownership: next } })
         toast.success(`Moved to ${OWNERSHIP_LABELS[next].toLowerCase()}.`)

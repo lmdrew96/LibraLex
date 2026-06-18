@@ -50,14 +50,14 @@ const TOOLS = [
   {
     name: "list_books",
     description:
-      "List the user's books, optionally filtered. Each book: title, authors, ownership (owned|wishlist|library), readStatus (unread|reading|read), year, pages, rating, isbn. Use the filters to answer 'what do I own?', 'what have I finished?', etc.",
+      "List the user's books, optionally filtered. Each book: title, authors, ownership (owned|wishlist|library|none, where none = read but not owned), readStatus (unread|reading|read), year, pages, rating, isbn. Use the filters to answer 'what do I own?', 'what have I finished?', etc.",
     inputSchema: {
       type: "object",
       properties: {
         ownership: {
           type: "string",
-          enum: ["owned", "wishlist", "library"],
-          description: "Only books on this shelf.",
+          enum: ["owned", "wishlist", "library", "none"],
+          description: "Only books on this shelf. 'none' = read/encountered but not owned.",
         },
         readStatus: {
           type: "string",
@@ -216,7 +216,7 @@ async function dispatch(
     case "list_books": {
       const books = await ctx.runQuery(internal.mcpData.listBooksForUser, {
         userId,
-        ownership: asEnum(args.ownership, ["owned", "wishlist", "library"] as const),
+        ownership: asEnum(args.ownership, ["owned", "wishlist", "library", "none"] as const),
         readStatus: asEnum(args.readStatus, ["unread", "reading", "read"] as const),
       })
       return textContent({ count: books.length, books })

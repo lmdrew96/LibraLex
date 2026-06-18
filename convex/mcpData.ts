@@ -18,6 +18,7 @@ const ownershipValidator = v.union(
   v.literal("owned"),
   v.literal("wishlist"),
   v.literal("library"),
+  v.literal("none"),
 )
 const readStatusValidator = v.union(
   v.literal("unread"),

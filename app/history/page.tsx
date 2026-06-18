@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { useQuery } from "convex/react"
 import { formatDistanceToNow } from "date-fns"
@@ -19,15 +20,50 @@ const dueColor: Record<string, string> = {
   overdue: "text-[var(--color-overdue)] font-semibold",
 }
 
-export default function ReadingPage() {
-  // "Reading" spans every shelf — owned and borrowed books you're mid-read on.
-  const books = useQuery(api.books.listBooks, { readStatus: "reading" })
+type Tab = "reading" | "read"
+const TABS: { key: Tab; label: string }[] = [
+  { key: "reading", label: "Reading" },
+  { key: "read", label: "Read" },
+]
+
+const EMPTY: Record<Tab, { title: string; message: string }> = {
+  reading: {
+    title: "Nothing open right now",
+    message: "When you start a book, mark it Reading and it'll show up here — your at-a-glance nightstand.",
+  },
+  read: {
+    title: "No finished books yet",
+    message:
+      "Mark a book Read — even one you don't own a copy of — and it lands in your history. The more you log, the sharper your recommendations get.",
+  },
+}
+
+export default function HistoryPage() {
+  const [tab, setTab] = useState<Tab>("reading")
+  // Ownership-agnostic by design: a book you're reading or have read lives on every
+  // shelf — owned, borrowed, and "Don't own" reads that aren't in your collection.
+  const books = useQuery(api.books.listBooks, { readStatus: tab })
 
   return (
     <AppShell>
       <div className="mb-5">
-        <h1 className="text-3xl font-semibold">Currently reading</h1>
-        <p className="mt-1 text-teal">Where you left off, across every shelf.</p>
+        <h1 className="text-3xl font-semibold">History</h1>
+        <p className="mt-1 text-teal">Everything you&apos;re reading and have read — across every shelf.</p>
+      </div>
+
+      <div className="mb-5 inline-flex rounded-full border border-lavender bg-card p-1">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+              tab === t.key ? "bg-teal text-surface" : "text-ink/70 hover:bg-lavender/50",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {books === undefined ? (
@@ -45,8 +81,8 @@ export default function ReadingPage() {
       ) : books.length === 0 ? (
         <EmptyState
           icon={BookOpen}
-          title="Nothing open right now"
-          message="When you start a book, mark it as Reading and it'll show up here — your at-a-glance nightstand."
+          title={EMPTY[tab].title}
+          message={EMPTY[tab].message}
           action={<AddBookDialog />}
         />
       ) : (
@@ -71,12 +107,17 @@ export default function ReadingPage() {
                   <div className="min-w-0 flex-1 pt-1">
                     <p className="font-medium text-ink">{book.title}</p>
                     <p className="text-sm text-teal">{book.authors[0] ?? "Unknown author"}</p>
-                    {book.startedAt && (
+                    {tab === "reading" && book.startedAt && (
                       <p className="mt-2 text-sm text-teal">
                         Started {formatDistanceToNow(book.startedAt, { addSuffix: true })}
                       </p>
                     )}
-                    {activeLoan && book.dueDate !== undefined && (
+                    {tab === "read" && book.finishedAt && (
+                      <p className="mt-2 text-sm text-teal">
+                        Finished {formatDistanceToNow(book.finishedAt, { addSuffix: true })}
+                      </p>
+                    )}
+                    {tab === "reading" && activeLoan && book.dueDate !== undefined && (
                       <p className={cn("mt-1 text-sm", dueColor[loanStatus(book.dueDate)])}>
                         {dueLabel(book.dueDate)}
                       </p>

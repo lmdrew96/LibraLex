@@ -126,13 +126,22 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
             checkoutDate: fromDateInput(checkoutInput),
             dueDate: fromDateInput(dueInput),
           }
-        : {}
+        : // "Don't own" is added straight to your reading history.
+          ownership === "none"
+          ? { readStatus: "read" as const }
+          : {}
     // Close optimistically — Convex's live query lands the book on the shelf.
     handleOpenChange(false)
     try {
       const id = await addBook({ ...bookArgs(selected), ownership, ...extra })
       const where =
-        ownership === "owned" ? "your shelf" : ownership === "wishlist" ? "your wishlist" : "your loans"
+        ownership === "owned"
+          ? "your shelf"
+          : ownership === "wishlist"
+            ? "your wishlist"
+            : ownership === "none"
+              ? "your history"
+              : "your loans"
       toast.success(`Added “${title}” to ${where}.`)
       // Enrich once in the background — the book is already on the shelf.
       void enrichInBackground(id, selected, applyEnrichment)
@@ -389,6 +398,9 @@ function OwnershipStep({
           </Button>
           <Button variant="calm" size="md" className="w-full" disabled={saving} onClick={() => onSave("wishlist")}>
             Add to wishlist
+          </Button>
+          <Button variant="outline" size="md" className="w-full" disabled={saving} onClick={() => onSave("none")}>
+            I&apos;ve read it (don&apos;t own a copy)
           </Button>
           <Button variant="outline" size="md" className="w-full" disabled={saving} onClick={() => setLibraryMode(true)}>
             Borrowed from the library

@@ -4,7 +4,7 @@
 
 import type { Doc } from "@/convex/_generated/dataModel"
 
-export type Ownership = "owned" | "wishlist" | "library"
+export type Ownership = "owned" | "wishlist" | "library" | "none"
 export type ReadStatus = "unread" | "reading" | "read"
 
 /** A stored book plus its resolved cover URL. The book queries resolve an
@@ -34,6 +34,7 @@ export const OWNERSHIP_LABELS: Record<Ownership, string> = {
   owned: "Owned",
   wishlist: "Wishlist",
   library: "Library",
+  none: "Don't own",
 }
 
 export const READ_STATUS_LABELS: Record<ReadStatus, string> = {
