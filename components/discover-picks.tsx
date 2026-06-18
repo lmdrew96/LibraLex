@@ -7,6 +7,7 @@ import type { BookWithCover } from "@/lib/types"
 import { moreLikeThisFromPool, recommendFromPool, topTasteSubjects } from "@/lib/recommend"
 import { bookKey } from "@/lib/book-key"
 import { useDiscover } from "@/lib/use-discover"
+import { useIdle } from "@/lib/use-idle"
 import { useInView } from "@/lib/use-in-view"
 import { OffShelfPick } from "@/components/off-shelf-pick"
 import { PickShelf } from "@/components/pick-shelf"
@@ -24,22 +25,31 @@ const explain = (shared: string[], hasTarget: boolean): string => {
  *  friend picks: anything already on your shelf or a friend's is filtered out.
  *
  *  The catalog call is SLOW (Open Library's subjects endpoint runs several seconds),
- *  so it's deferred until the section scrolls into view — it never delays the page's
- *  initial load. The route caches results, so a second viewing is instant. */
+ *  so it never blocks the page. Two deferral modes:
+ *   • eager  — load proactively once the page is idle after paint (everything else
+ *              renders first, then discovery fills in on its own). For the home shelf.
+ *   • lazy   — wait until the section scrolls into view. For a book detail page,
+ *              where discovery sits at the very bottom and is often not reached.
+ *  Either way the route caches results, so a second viewing is instant. */
 export function DiscoverPicks({
   library,
   target,
   title,
   layout,
+  eager = false,
 }: {
   library: BookWithCover[]
   target?: BookWithCover
   title: string
   layout: "carousel" | "grid"
+  eager?: boolean
 }) {
   const [ref, inView] = useInView<HTMLDivElement>()
-  // No subjects until the section is approached → useDiscover makes no request.
-  const subjects = inView
+  const idle = useIdle()
+  // Eager: start after the page is idle. Lazy: start when scrolled near. Until
+  // then there are no subjects, so useDiscover makes no request.
+  const active = eager ? idle : inView
+  const subjects = active
     ? target
       ? (target.subjects ?? []).slice(0, 4)
       : topTasteSubjects(library)
@@ -79,7 +89,7 @@ export function DiscoverPicks({
             ),
           }))}
         />
-      ) : inView && loading ? (
+      ) : active && loading ? (
         <DiscoverSkeleton title={title} layout={layout} />
       ) : (
         // Idle sentinel — 1px so the observer has measurable area to detect.

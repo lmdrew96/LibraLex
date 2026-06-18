@@ -66,7 +66,7 @@ export default function ShelfPage() {
               <ReadNext books={allBooks} />
               <RecommendedForYou books={allBooks} />
               <FriendPicks library={allBooks} title="From your friends" layout="carousel" />
-              <DiscoverPicks library={allBooks} title="Discover" layout="carousel" />
+              <DiscoverPicks library={allBooks} title="Discover" layout="carousel" eager />
             </>
           )}
 
