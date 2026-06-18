@@ -2,25 +2,39 @@ import { NextResponse } from "next/server"
 
 // Catalog discovery (Recommendations v2, Phase 2). Given a set of subjects — the
 // user's top taste subjects, or one book's subjects — expand them into candidate
-// books via Open Library's subjects endpoint. Each returned work carries a rich
-// `subject[]` array (far more than search.json exposes), which is exactly the fuel
-// the content recommender scores; the client ranks + dedupes against the shelf.
+// books from Open Library.
+//
+// We use search.json sorted by `readinglog` (how many readers have shelved a book)
+// with a publication-year floor, NOT the /subjects/ endpoint. The subjects endpoint
+// ranks by edition count, which buries everything under heavily-reprinted
+// public-domain classics (Austen, Carroll, …) — so discovery only ever surfaced
+// 50+-year-old books. readinglog reflects what people actually read today, so the
+// pool skews contemporary while still carrying the rich subject[] the scorer needs.
 //
 // Runs server-side so no CORS and a descriptive UA reaches Open Library. Stateless:
-// it knows nothing about the user — just subjects in, candidates out.
+// it knows nothing about the user — just subjects in, candidates out; the client
+// ranks by taste and dedupes against the shelf + friends.
 export const maxDuration = 30
 
 const UA = "LibraLex/0.16 (libra.adhdesigns.dev)"
-const SUBJECT_TIMEOUT_MS = 9000
+const OL_TIMEOUT_MS = 9000
 const MAX_SUBJECTS = 4 // bound the fan-out (one OL call each, in parallel)
 const PER_SUBJECT = 14
 const MAX_RESULTS = 40
 const MAX_SUBJECT_TOKENS = 14 // trim each candidate's subject list to keep the payload sane
 
-// The OL subjects endpoint is slow (several seconds per call), but a subject's
-// popular works barely change day to day. Cache the mapped candidates per slug in
-// module memory (persists across requests within a warm instance) so repeat views
-// are instant. A slow/failed refetch falls back to the stale entry.
+// Recency floor: only works first published in/after this year are candidates, so
+// public-domain classics drop out while modern classics (Watchmen '87, the '90s
+// fantasy boom, …) stay. The ceiling is "next year" so just-published books count.
+const YEAR_FLOOR = 1980
+const YEAR_CEIL = new Date().getFullYear() + 1
+
+const SEARCH_FIELDS = "key,title,author_name,cover_i,first_publish_year,subject"
+
+// Open Library is slow (a few seconds per call), but a subject's popular books
+// barely change day to day. Cache the mapped candidates per subject in module
+// memory (persists across requests within a warm instance) so repeat views are
+// instant. A slow/failed refetch falls back to the stale entry.
 const SUBJECT_CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6h
 const subjectCache = new Map<string, { candidates: DiscoveryCandidate[]; at: number }>()
 
@@ -32,12 +46,6 @@ export type DiscoveryCandidate = {
   firstPublishYear?: number
   subjects?: string[]
 }
-
-// "Fantasy fiction" → "fantasy_fiction". OL's subjects endpoint matches these
-// slugified free-text subjects, so most stored subjects resolve; a miss just
-// returns no works (graceful — other subjects still contribute).
-const slugify = (s: string): string =>
-  s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
 
 const fetchWithTimeout = async (url: string, ms: number): Promise<Response> => {
   const controller = new AbortController()
@@ -52,47 +60,49 @@ const fetchWithTimeout = async (url: string, ms: number): Promise<Response> => {
   }
 }
 
-type OLSubjectWork = {
+type OLSearchDoc = {
   key?: string
   title?: string
-  authors?: Array<{ name?: string }>
-  cover_id?: number
+  author_name?: string[]
+  cover_i?: number
   first_publish_year?: number
   subject?: string[]
 }
 
-const fetchSubject = async (slug: string): Promise<DiscoveryCandidate[]> => {
-  const cached = subjectCache.get(slug)
+const mapDoc = (d: OLSearchDoc): DiscoveryCandidate | null => {
+  if (!d.key || !d.title) return null
+  return {
+    workKey: d.key,
+    title: d.title,
+    authors: d.author_name ?? [],
+    coverId: typeof d.cover_i === "number" && d.cover_i > 0 ? d.cover_i : undefined,
+    firstPublishYear: d.first_publish_year,
+    subjects: d.subject?.slice(0, MAX_SUBJECT_TOKENS),
+  }
+}
+
+// The popular, contemporary works tagged with one subject. The subject is matched
+// as a quoted phrase so multi-word stored subjects ("Fantasy fiction") resolve.
+const fetchSubject = async (subject: string): Promise<DiscoveryCandidate[]> => {
+  const cacheKey = subject.trim().toLowerCase()
+  const cached = subjectCache.get(cacheKey)
   if (cached && Date.now() - cached.at < SUBJECT_CACHE_TTL_MS) return cached.candidates
   try {
-    const res = await fetchWithTimeout(
-      `https://openlibrary.org/subjects/${encodeURIComponent(slug)}.json?limit=${PER_SUBJECT}`,
-      SUBJECT_TIMEOUT_MS,
-    )
+    const q = `subject:"${subject.replace(/"/g, "")}" AND first_publish_year:[${YEAR_FLOOR} TO ${YEAR_CEIL}]`
+    const url =
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}` +
+      `&sort=readinglog&limit=${PER_SUBJECT}&fields=${SEARCH_FIELDS}`
+    const res = await fetchWithTimeout(url, OL_TIMEOUT_MS)
     if (!res.ok) return cached?.candidates ?? []
-    const data = (await res.json()) as { works?: OLSubjectWork[] }
-    const candidates = (data.works ?? [])
-      .map(mapWork)
+    const data = (await res.json()) as { docs?: OLSearchDoc[] }
+    const candidates = (data.docs ?? [])
+      .map(mapDoc)
       .filter((c): c is DiscoveryCandidate => c !== null)
-    subjectCache.set(slug, { candidates, at: Date.now() })
+    subjectCache.set(cacheKey, { candidates, at: Date.now() })
     return candidates
   } catch {
     // Serve a stale entry on a slow/failed refetch rather than nothing.
     return cached?.candidates ?? []
-  }
-}
-
-const mapWork = (w: OLSubjectWork): DiscoveryCandidate | null => {
-  if (!w.key || !w.title) return null
-  return {
-    workKey: w.key,
-    title: w.title,
-    authors: (w.authors ?? [])
-      .map((a) => a.name)
-      .filter((n): n is string => Boolean(n)),
-    coverId: typeof w.cover_id === "number" && w.cover_id > 0 ? w.cover_id : undefined,
-    firstPublishYear: w.first_publish_year,
-    subjects: w.subject?.slice(0, MAX_SUBJECT_TOKENS),
   }
 }
 
@@ -107,14 +117,24 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ results: [] satisfies DiscoveryCandidate[] })
   }
 
-  const slugs = [...new Set(subjects.map(slugify).filter(Boolean))].slice(0, MAX_SUBJECTS)
-  if (slugs.length === 0) {
+  // Dedupe (case-insensitively) and cap the fan-out, keeping the original text.
+  const seen = new Set<string>()
+  const wanted: string[] = []
+  for (const s of subjects) {
+    const t = s.trim()
+    const k = t.toLowerCase()
+    if (t && !seen.has(k)) {
+      seen.add(k)
+      wanted.push(t)
+    }
+    if (wanted.length >= MAX_SUBJECTS) break
+  }
+  if (wanted.length === 0) {
     return NextResponse.json({ results: [] satisfies DiscoveryCandidate[] })
   }
 
-  // Fan out across subjects in parallel (each cached per slug); merge, deduping
-  // by work key.
-  const batches = await Promise.all(slugs.map(fetchSubject))
+  // Fan out across subjects in parallel (each cached); merge, deduping by work key.
+  const batches = await Promise.all(wanted.map(fetchSubject))
   const byKey = new Map<string, DiscoveryCandidate>()
   for (const cands of batches) {
     for (const c of cands) {
