@@ -46,6 +46,8 @@ export type ApplyEnrichmentArgs = {
   categories?: string[]
   subjects?: string[]
   authorBios?: { name: string; bio?: string }[]
+  averageRating?: number
+  ratingsCount?: number
 }
 
 // Enrich-once: after a book lands on the shelf, fetch its full metadata
@@ -78,6 +80,8 @@ export const enrichInBackground = async (
       categories: book.categories,
       subjects: book.subjects,
       authorBios: book.authorBios,
+      averageRating: book.averageRating,
+      ratingsCount: book.ratingsCount,
     })
   } catch {
     // best-effort enrichment — the book is already saved with its base data

@@ -18,6 +18,8 @@ export type EnrichedBook = {
   categories?: string[]
   subjects?: string[]
   authorBios?: { name: string; bio?: string }[]
+  averageRating?: number // Google Books community average (0–5)
+  ratingsCount?: number // number of Google Books ratings behind that average
 }
 
 // The enrich-once engine. Merges Google Books (bibliographic) + Open Library
@@ -108,6 +110,8 @@ type GoogleVolume = {
   categories: string[]
   thumbnail: string | undefined
   isComic: boolean
+  averageRating: number | undefined
+  ratingsCount: number | undefined
 }
 
 const fetchGoogleVolumeByIsbn = async (isbn: string): Promise<GoogleVolume | null> => {
@@ -128,12 +132,18 @@ const fetchGoogleVolumeByIsbn = async (isbn: string): Promise<GoogleVolume | nul
           description?: string
           categories?: string[]
           imageLinks?: { thumbnail?: string; smallThumbnail?: string }
+          averageRating?: number
+          ratingsCount?: number
         }
       }>
     }
     const info = data.items?.[0]?.volumeInfo
     if (!info) return null
     const thumb = info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail
+    // Only trust a rating that's backed by at least one vote — GB occasionally
+    // returns an averageRating with a 0/absent count.
+    const ratingsCount =
+      typeof info.ratingsCount === "number" && info.ratingsCount > 0 ? info.ratingsCount : undefined
     return {
       authors: info.authors ?? [],
       year: parseYear(info.publishedDate),
@@ -142,6 +152,11 @@ const fetchGoogleVolumeByIsbn = async (isbn: string): Promise<GoogleVolume | nul
       categories: info.categories ?? [],
       thumbnail: thumb ? thumb.replace(/^http:\/\//, "https://") : undefined,
       isComic: isComicCategory(info.categories ?? []),
+      averageRating:
+        ratingsCount !== undefined && typeof info.averageRating === "number"
+          ? info.averageRating
+          : undefined,
+      ratingsCount,
     }
   } catch {
     return null
@@ -276,5 +291,7 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
     categories: gb?.categories && gb.categories.length > 0 ? gb.categories : undefined,
     subjects: work?.subjects.length ? normalizeSubjects(work.subjects) : undefined,
     authorBios: bios.length > 0 ? bios : undefined,
+    averageRating: gb?.averageRating,
+    ratingsCount: gb?.ratingsCount,
   }
 }

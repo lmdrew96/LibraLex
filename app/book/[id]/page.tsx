@@ -20,6 +20,7 @@ import { BookInfo } from "@/components/book-info"
 import { DiscoverPicks } from "@/components/discover-picks"
 import { FriendPicks } from "@/components/friend-picks"
 import { MoreLikeThis } from "@/components/more-like-this"
+import { RatingsSummary } from "@/components/ratings-summary"
 import { RecommendDialog } from "@/components/recommend-dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -38,6 +39,12 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
   const book = useQuery(api.books.getBook, { id: id as Id<"books"> })
   // Whole library for the "More like this" nearest-neighbour comparison.
   const allBooks = useQuery(api.books.listBooks, {})
+  // Anonymous cross-user average for this title — keyed by the same identity the
+  // recommender dedupes on. Skips until the book (its workKey/isbn) has loaded.
+  const community = useQuery(
+    api.books.communityRating,
+    book ? { workKey: book.workKey, isbn: book.isbn } : "skip",
+  )
 
   const updateBook = useMutation(api.books.updateBook)
   const checkoutBook = useMutation(api.books.checkoutBook)
@@ -96,6 +103,8 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
         categories: enriched.categories,
         subjects: enriched.subjects,
         authorBios: enriched.authorBios,
+        averageRating: enriched.averageRating,
+        ratingsCount: enriched.ratingsCount,
       })
       toast.success("Metadata refreshed.")
     } catch {
@@ -224,6 +233,13 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
             {book.pageCount && <span>{book.pageCount} pages</span>}
             {book.isbn && <span className="font-mono text-xs">ISBN {book.isbn}</span>}
           </div>
+
+          <RatingsSummary
+            googleAverage={book.averageRating}
+            googleCount={book.ratingsCount}
+            communityAverage={community?.average}
+            communityCount={community?.count}
+          />
 
           <div className="mt-4">
             <RecommendDialog

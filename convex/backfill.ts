@@ -40,6 +40,8 @@ export const _applyEnrichment = internalMutation({
     categories: v.optional(v.array(v.string())),
     subjects: v.optional(v.array(v.string())),
     authorBios: authorBiosValidator,
+    averageRating: v.optional(v.number()),
+    ratingsCount: v.optional(v.number()),
   },
   handler: async (ctx, { id, ...fields }) => {
     await ctx.db.patch(id, fields)
@@ -55,6 +57,7 @@ type BackfillChange = {
   addedSubjects?: number
   addedDescription?: boolean
   addedBios?: number
+  addedRating?: boolean
 }
 type BackfillResult = {
   dryRun: boolean
@@ -98,6 +101,8 @@ export const enrichAllBooks = internalAction({
         categories: enriched.categories ?? b.categories,
         subjects: enriched.subjects ?? b.subjects,
         authorBios: enriched.authorBios ?? b.authorBios,
+        averageRating: enriched.averageRating ?? b.averageRating,
+        ratingsCount: enriched.ratingsCount ?? b.ratingsCount,
       }
 
       const changedFields =
@@ -110,7 +115,9 @@ export const enrichAllBooks = internalAction({
         next.description !== b.description ||
         !sameJson(next.categories, b.categories) ||
         !sameJson(next.subjects, b.subjects) ||
-        !sameJson(next.authorBios, b.authorBios)
+        !sameJson(next.authorBios, b.authorBios) ||
+        next.averageRating !== b.averageRating ||
+        next.ratingsCount !== b.ratingsCount
 
       if (!changedFields) continue
 
@@ -121,6 +128,7 @@ export const enrichAllBooks = internalAction({
       if (!b.subjects?.length && next.subjects?.length) change.addedSubjects = next.subjects.length
       if (!b.description && next.description) change.addedDescription = true
       if (!b.authorBios?.length && next.authorBios?.length) change.addedBios = next.authorBios.length
+      if (b.averageRating === undefined && next.averageRating !== undefined) change.addedRating = true
       changes.push(change)
 
       if (!dryRun) {

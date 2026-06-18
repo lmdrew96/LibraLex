@@ -32,6 +32,8 @@ export default defineSchema({
     authorBios: v.optional(
       v.array(v.object({ name: v.string(), bio: v.optional(v.string()) })),
     ), // OL author records
+    averageRating: v.optional(v.number()), // GB community average (0–5) — shown alongside the LibraLex community average
+    ratingsCount: v.optional(v.number()), // number of GB ratings behind averageRating
 
     // ── shelf relationship ────────────────────────────────────────────────────
     // "none" = read/encountered but not in your possession (a friend's copy, a
@@ -61,7 +63,11 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_ownership", ["userId", "ownership"])
     .index("by_user_readStatus", ["userId", "readStatus"])
-    .index("by_user_dueDate", ["userId", "dueDate"]),
+    .index("by_user_dueDate", ["userId", "dueDate"])
+    // Cross-user lookups by book identity — power the LibraLex community average,
+    // which collects every user's copy of a title and averages their ratings.
+    .index("by_workKey", ["workKey"])
+    .index("by_isbn", ["isbn"]),
 
   // One profile row per Clerk identity. Minted on first authenticated load
   // (see users.ensureProfile) and kept in sync with Clerk's name/avatar. The

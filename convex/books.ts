@@ -14,6 +14,8 @@ const enrichmentValidators = {
   authorBios: v.optional(
     v.array(v.object({ name: v.string(), bio: v.optional(v.string()) })),
   ),
+  averageRating: v.optional(v.number()),
+  ratingsCount: v.optional(v.number()),
 }
 
 // Default library loan period: 3 weeks. It's a default, not a law — every code
@@ -185,6 +187,8 @@ export const addBook = mutation({
       categories: args.categories,
       subjects: args.subjects ? normalizeSubjects(args.subjects) : undefined,
       authorBios: args.authorBios,
+      averageRating: args.averageRating,
+      ratingsCount: args.ratingsCount,
       ownership: args.ownership,
       readStatus: args.readStatus ?? ("unread" as const),
       addedAt: now,
@@ -283,6 +287,8 @@ export const applyEnrichment = mutation({
       categories: args.categories ?? book.categories,
       subjects: args.subjects?.length ? normalizeSubjects(args.subjects) : book.subjects,
       authorBios: args.authorBios ?? book.authorBios,
+      averageRating: args.averageRating ?? book.averageRating,
+      ratingsCount: args.ratingsCount ?? book.ratingsCount,
     })
   },
 })
@@ -380,5 +386,47 @@ export const removeBookCover = mutation({
       await ctx.storage.delete(book.coverStorageId)
       await ctx.db.patch(args.id, { coverStorageId: undefined })
     }
+  },
+})
+
+// The LibraLex community average for a book: every user's copy of the same title,
+// averaged over those who actually rated it. Identity follows the same preference
+// as the cross-shelf dedupe (work key, else ISBN) so the same book on two shelves
+// collapses to one pool. Returns an ANONYMOUS aggregate only — no user, no per-
+// rating data — so it's safe to show beyond the friend graph. Null when nobody
+// (yet) has rated it, which the UI renders as "no community rating".
+export const communityRating = query({
+  args: { workKey: v.optional(v.string()), isbn: v.optional(v.string()) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ average: number; count: number } | null> => {
+    // Need an authenticated session (the whole app is gated) but no ownership
+    // check — this is a cross-user aggregate by design.
+    const userId = await getUserId(ctx)
+    if (!userId) return null
+
+    let copies: Doc<"books">[] = []
+    if (args.workKey) {
+      copies = await ctx.db
+        .query("books")
+        .withIndex("by_workKey", (q) => q.eq("workKey", args.workKey))
+        .collect()
+    } else if (args.isbn) {
+      copies = await ctx.db
+        .query("books")
+        .withIndex("by_isbn", (q) => q.eq("isbn", args.isbn))
+        .collect()
+    } else {
+      return null
+    }
+
+    const ratings = copies
+      .map((b) => b.rating)
+      .filter((r): r is number => typeof r === "number")
+    if (ratings.length === 0) return null
+
+    const average = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+    return { average, count: ratings.length }
   },
 })
