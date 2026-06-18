@@ -10,12 +10,19 @@ import { NextResponse } from "next/server"
 // it knows nothing about the user — just subjects in, candidates out.
 export const maxDuration = 30
 
-const UA = "LibraLex/0.14 (libra.adhdesigns.dev)"
+const UA = "LibraLex/0.16 (libra.adhdesigns.dev)"
 const SUBJECT_TIMEOUT_MS = 9000
 const MAX_SUBJECTS = 4 // bound the fan-out (one OL call each, in parallel)
 const PER_SUBJECT = 14
 const MAX_RESULTS = 40
 const MAX_SUBJECT_TOKENS = 14 // trim each candidate's subject list to keep the payload sane
+
+// The OL subjects endpoint is slow (several seconds per call), but a subject's
+// popular works barely change day to day. Cache the mapped candidates per slug in
+// module memory (persists across requests within a warm instance) so repeat views
+// are instant. A slow/failed refetch falls back to the stale entry.
+const SUBJECT_CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6h
+const subjectCache = new Map<string, { candidates: DiscoveryCandidate[]; at: number }>()
 
 export type DiscoveryCandidate = {
   workKey: string
@@ -54,17 +61,24 @@ type OLSubjectWork = {
   subject?: string[]
 }
 
-const fetchSubject = async (slug: string): Promise<OLSubjectWork[]> => {
+const fetchSubject = async (slug: string): Promise<DiscoveryCandidate[]> => {
+  const cached = subjectCache.get(slug)
+  if (cached && Date.now() - cached.at < SUBJECT_CACHE_TTL_MS) return cached.candidates
   try {
     const res = await fetchWithTimeout(
       `https://openlibrary.org/subjects/${encodeURIComponent(slug)}.json?limit=${PER_SUBJECT}`,
       SUBJECT_TIMEOUT_MS,
     )
-    if (!res.ok) return []
+    if (!res.ok) return cached?.candidates ?? []
     const data = (await res.json()) as { works?: OLSubjectWork[] }
-    return data.works ?? []
+    const candidates = (data.works ?? [])
+      .map(mapWork)
+      .filter((c): c is DiscoveryCandidate => c !== null)
+    subjectCache.set(slug, { candidates, at: Date.now() })
+    return candidates
   } catch {
-    return []
+    // Serve a stale entry on a slow/failed refetch rather than nothing.
+    return cached?.candidates ?? []
   }
 }
 
@@ -98,13 +112,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ results: [] satisfies DiscoveryCandidate[] })
   }
 
-  // Fan out across subjects in parallel; merge, deduping by work key.
+  // Fan out across subjects in parallel (each cached per slug); merge, deduping
+  // by work key.
   const batches = await Promise.all(slugs.map(fetchSubject))
   const byKey = new Map<string, DiscoveryCandidate>()
-  for (const works of batches) {
-    for (const w of works) {
-      const c = mapWork(w)
-      if (c && !byKey.has(c.workKey)) byKey.set(c.workKey, c)
+  for (const cands of batches) {
+    for (const c of cands) {
+      if (!byKey.has(c.workKey)) byKey.set(c.workKey, c)
     }
   }
 
