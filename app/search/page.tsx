@@ -130,16 +130,26 @@ export default function SearchPage() {
 // checkout dates) stay with the dedicated Add-book flow.
 function AddActions({ book }: { book: BookSearchResult }) {
   const addBook = useMutation(api.books.addBook)
-  const [busy, setBusy] = useState<"owned" | "wishlist" | null>(null)
-  const [added, setAdded] = useState<"owned" | "wishlist" | null>(null)
+  const [busy, setBusy] = useState<"owned" | "wishlist" | "none" | null>(null)
+  const [added, setAdded] = useState<"owned" | "wishlist" | "none" | null>(null)
 
-  const add = async (ownership: "owned" | "wishlist") => {
+  // "none" = read but not owned, logged as read in one tap (see the books schema's
+  // ownership note). Owned/wishlist leave readStatus at its "unread" default.
+  const add = async (ownership: "owned" | "wishlist" | "none") => {
     if (busy || added) return
     setBusy(ownership)
     try {
-      await addBook({ ...bookArgs(book), ownership })
+      await addBook({
+        ...bookArgs(book),
+        ownership,
+        readStatus: ownership === "none" ? "read" : undefined,
+      })
       setAdded(ownership)
-      toast.success(`Added “${book.title}” to your ${ownership === "owned" ? "shelf" : "wishlist"}.`)
+      toast.success(
+        ownership === "none"
+          ? `Logged “${book.title}” as read.`
+          : `Added “${book.title}” to your ${ownership === "owned" ? "shelf" : "wishlist"}.`,
+      )
     } catch {
       toast.error(`Couldn't add “${book.title}”. Try again.`)
     } finally {
@@ -150,13 +160,15 @@ function AddActions({ book }: { book: BookSearchResult }) {
   if (added) {
     return (
       <p className="text-center text-sm font-medium text-teal">
-        Added to your {added === "owned" ? "shelf" : "wishlist"} ✓
+        {added === "none"
+          ? "Logged as read ✓"
+          : `Added to your ${added === "owned" ? "shelf" : "wishlist"} ✓`}
       </p>
     )
   }
 
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
       <Button
         variant="calm"
         size="sm"
@@ -174,6 +186,15 @@ function AddActions({ book }: { book: BookSearchResult }) {
         onClick={() => add("wishlist")}
       >
         Add to wishlist
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="flex-1"
+        disabled={busy !== null}
+        onClick={() => add("none")}
+      >
+        I&apos;ve read it
       </Button>
     </div>
   )

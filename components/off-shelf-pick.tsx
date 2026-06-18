@@ -142,14 +142,18 @@ function AddActions({ book, onAdded }: { book: OffShelfBook; onAdded: () => void
   const applyEnrichment = useMutation(api.books.applyEnrichment)
   const [saving, setSaving] = useState(false)
 
-  const add = async (ownership: "owned" | "wishlist") => {
+  // "I've read it" logs the book as read but not owned (ownership "none") in one tap —
+  // otherwise you'd add it to a shelf, mark it read, then move it off. The owned and
+  // wishlist paths leave readStatus at its "unread" default.
+  const add = async (
+    ownership: "owned" | "wishlist" | "none",
+    extras: { readStatus?: "read"; message: string },
+  ) => {
     if (saving) return
     setSaving(true)
     try {
-      const id = await addBook({ ...bookArgs(book), ownership })
-      toast.success(
-        `Added “${book.title}” to your ${ownership === "owned" ? "shelf" : "wishlist"}.`,
-      )
+      const id = await addBook({ ...bookArgs(book), ownership, readStatus: extras.readStatus })
+      toast.success(extras.message)
       void enrichInBackground(id, book, applyEnrichment)
       onAdded()
     } catch {
@@ -160,12 +164,32 @@ function AddActions({ book, onAdded }: { book: OffShelfBook; onAdded: () => void
   }
 
   return (
-    <div className="flex gap-2">
-      <Button variant="calm" size="sm" disabled={saving} onClick={() => add("owned")}>
+    <div className="flex flex-wrap gap-2">
+      <Button
+        variant="calm"
+        size="sm"
+        disabled={saving}
+        onClick={() => add("owned", { message: `Added “${book.title}” to your shelf.` })}
+      >
         I own it
       </Button>
-      <Button variant="outline" size="sm" disabled={saving} onClick={() => add("wishlist")}>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={saving}
+        onClick={() => add("wishlist", { message: `Added “${book.title}” to your wishlist.` })}
+      >
         Add to wishlist
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={saving}
+        onClick={() =>
+          add("none", { readStatus: "read", message: `Logged “${book.title}” as read.` })
+        }
+      >
+        I&apos;ve read it
       </Button>
     </div>
   )
