@@ -55,7 +55,10 @@ export function OffShelfPick({
       aria-label={`More about ${book.title}`}
       className={cn(
         "group flex flex-col gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
-        layout === "carousel" && "w-32 shrink-0 sm:w-36",
+        // A <button> shrink-wraps to its content instead of filling its grid cell
+        // (unlike the <a> in BookCard), so the grid case needs an explicit w-full
+        // or covers balloon to the title's natural width. Carousel sets a fixed width.
+        layout === "carousel" ? "w-32 shrink-0 sm:w-36" : "w-full",
       )}
     >
       <div className="relative transition-transform group-hover:-translate-y-0.5">
