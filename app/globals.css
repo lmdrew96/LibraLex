@@ -1,10 +1,19 @@
 @import "tailwindcss";
 
+/* Drive `dark:` utilities off the .dark class we toggle on <html> (set by the
+   anti-FOUC script in layout.tsx), not the OS media query — so an explicit
+   light/dark choice always wins over the system preference. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ============================================================
    LibraLex — ADHDesigns house theme (light, brand-canonical)
    Tokens mirror the ADHDesigns brand kit. Fonts are injected by
    next/font in app/layout.tsx as --font-fraunces / -space-grotesk /
    -geist-mono, then mapped to brand font tokens below.
+
+   Dark mode lives entirely in the `html.dark` block below: because every
+   component reads these semantic --color-* tokens, re-theming is a matter of
+   reassigning the token VALUES, not editing components.
    ============================================================ */
 @theme {
   /* LibraLex palette — Meadow / Twilight / Cerulean (custom, ND-tuned).
@@ -52,6 +61,47 @@
   --shadow-swatch: 0px 10px 15px rgba(0, 0, 0, 0.1), 0px 4px 6px rgba(0, 0, 0, 0.1);
 }
 
+/* Native form controls / scrollbars follow the active theme. */
+html {
+  color-scheme: light;
+}
+
+/* ============================================================
+   Dark theme — Twilight Night. Same brand trio, inverted for a calm dark
+   surface: deep Twilight Indigo base (never pure black), soft near-white text
+   (never pure white), accents brightened so they clear AA on the dark surface.
+   `html.dark` (specificity 0,1,1) outranks the @theme `:root`, so these win
+   regardless of source order. Only token VALUES change here.
+   ============================================================ */
+html.dark {
+  color-scheme: dark;
+
+  /* Brand trio — brightened for legibility on a dark surface */
+  --color-meadow: #97c895;
+  --color-indigo: #7682b5;
+  --color-cerulean: #6fb6c0;
+
+  /* Mapped roles */
+  --color-teal: #82b9c2; /* light cerulean — secondary text, icons, active fills (AA on the dark surface) */
+  --color-ink: #e7ecf6; /* soft near-white indigo — primary text + headings */
+  --color-surface: #161b27; /* deep twilight navy — calm page background */
+  --color-card: #20283a; /* raised twilight — cards sit above the surface */
+  --color-mint: #3f7d77; /* deep cerulean-green — "calm" surfaces/buttons (pairs with light ink) */
+  --color-green: #93c692; /* Meadow — success, read status, confirmations */
+  --color-lavender: #323b50; /* mid twilight — borders, muted fills, skeletons */
+  --color-purple: #8b97cf; /* lightened twilight indigo — decorative */
+  --color-olive: #74a895; /* muted spruce — spare accent */
+
+  /* State accents */
+  --color-gold: #6fc0cb; /* bright cerulean — ratings stars, reading status (pops on dark) */
+  --color-due-soon: #8b97cf; /* periwinkle — loan "due soon" caution */
+  --color-overdue: #e06b63; /* brightened brick — overdue alert reads on dark */
+
+  /* Shadows — deeper so raised surfaces still separate on a dark background */
+  --shadow-card: 0px 1px 2px rgba(0, 0, 0, 0.5), 0px 1px 1px rgba(0, 0, 0, 0.4);
+  --shadow-swatch: 0px 10px 20px rgba(0, 0, 0, 0.55), 0px 4px 8px rgba(0, 0, 0, 0.45);
+}
+
 body {
   background-color: var(--color-surface);
   color: var(--color-ink);
@@ -76,6 +126,13 @@ h4 {
 .cover-placeholder {
   background: linear-gradient(150deg, var(--color-ink) 0%, var(--color-teal) 100%);
   color: var(--color-surface);
+}
+
+/* In dark mode ink/teal flip light, so keep the spine dark with light text
+   instead of letting placeholders glow brighter than the real covers. */
+html.dark .cover-placeholder {
+  background: linear-gradient(150deg, var(--color-lavender) 0%, var(--color-card) 100%);
+  color: var(--color-ink);
 }
 
 /* Cover-shaped skeleton shimmer (loading states — no spinners). */

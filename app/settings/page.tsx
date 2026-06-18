@@ -3,9 +3,10 @@
 import { useState } from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
-import { Bot, Copy, Loader2, RefreshCw, ShieldAlert, Trash2 } from "lucide-react"
+import { Bot, Copy, Loader2, Palette, RefreshCw, ShieldAlert, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { AppShell } from "@/components/app-shell"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -65,8 +66,19 @@ export default function SettingsPage() {
     <AppShell>
       <div className="mb-6">
         <h1 className="text-3xl font-semibold">Settings</h1>
-        <p className="mt-1 text-teal">Connect your shelf to Claude.</p>
+        <p className="mt-1 text-teal">Personalize your shelf and connect it to Claude.</p>
       </div>
+
+      <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
+        <div className="mb-1 flex items-center gap-2">
+          <Palette className="h-5 w-5 text-teal" />
+          <h2 className="text-sm font-semibold text-teal">Appearance</h2>
+        </div>
+        <p className="mb-4 max-w-prose text-sm text-teal/90">
+          Choose a theme. “System” follows your device’s light or dark setting automatically.
+        </p>
+        <ThemeToggle />
+      </section>
 
       <section className="rounded-[24px] border border-lavender bg-card p-5">
         <div className="mb-1 flex items-center gap-2">

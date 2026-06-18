@@ -10,6 +10,7 @@ import { api } from "@/convex/_generated/api"
 import { loanStatus } from "@/lib/loans"
 import { cn } from "@/lib/utils"
 import { AddBookDialog } from "@/components/add-book-dialog"
+import { ThemeQuickToggle } from "@/components/theme-toggle"
 
 const NAV = [
   { href: "/", label: "Shelf", icon: BookMarked },
@@ -70,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
           <div className="flex items-center gap-3">
             <AddBookDialog />
+            <ThemeQuickToggle />
             <Link
               href="/settings"
               aria-label="Settings"
@@ -109,8 +111,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                       active
                         ? "bg-surface text-teal"
                         : alertBadge
-                          ? "bg-[var(--color-overdue)] text-surface"
-                          : "bg-gold text-ink",
+                          ? "bg-[var(--color-overdue)] text-white"
+                          : "bg-gold text-ink dark:text-surface",
                     )}
                   >
                     {badge}

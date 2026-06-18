@@ -102,9 +102,9 @@ export function BarcodeScanner({
             playsInline
           />
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="h-28 w-4/5 rounded-xl border-2 border-surface/80 shadow-[0_0_0_9999px_rgba(30,24,48,0.35)]" />
+            <div className="h-28 w-4/5 rounded-xl border-2 border-white/80 shadow-[0_0_0_9999px_rgba(30,24,48,0.35)]" />
           </div>
-          <p className="absolute inset-x-0 bottom-3 text-center text-sm text-surface/90">
+          <p className="absolute inset-x-0 bottom-3 text-center text-sm text-white/90">
             {status === "starting" ? "Starting camera…" : "Point at the barcode on the back cover"}
           </p>
         </div>

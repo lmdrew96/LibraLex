@@ -15,7 +15,7 @@ const buttonVariants = cva(
         calm: "bg-mint text-ink hover:opacity-90",
         ghost: "bg-lavender text-ink hover:opacity-90",
         outline: "border border-lavender bg-card text-ink hover:bg-lavender/40",
-        danger: "bg-[var(--color-overdue)] text-surface hover:opacity-90",
+        danger: "bg-[var(--color-overdue)] text-white hover:opacity-90",
       },
       size: {
         sm: "h-9 px-4 text-sm",
