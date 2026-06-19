@@ -134,4 +134,18 @@ export default defineSchema({
   })
     .index("by_recipient", ["toUserId"])
     .index("by_recipient_status", ["toUserId", "status"]),
+
+  // "Not interested" — a user declining an auto-recommendation. One row per
+  // (user, book) dismissed from the off-shelf discovery surfaces (FriendPicks +
+  // DiscoverPicks). `key` is the cross-shelf bookKey()/dedupeKey identity
+  // (workKey → isbn → title+author), so a title dismissed from one source stays
+  // hidden everywhere. Dismissals are durable (no expiry); undoing deletes the
+  // row. by_user_key makes the idempotent insert + undo an O(1) lookup.
+  dismissedBooks: defineTable({
+    userId: v.string(), // Clerk identity.tokenIdentifier
+    key: v.string(), // bookKey() — stable cross-shelf identity
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_key", ["userId", "key"]),
 })

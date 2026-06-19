@@ -58,10 +58,14 @@ export function DiscoverPicks({
   // Shared with FriendPicks' subscription (Convex dedupes identical queries), so
   // this is free — we read it only to exclude books already shown as friend picks.
   const friendCandidates = useQuery(api.discover.friendCandidates)
+  // Books the user marked "not interested" — already bookKey() strings, so they
+  // drop straight into the excluded set.
+  const dismissed = useQuery(api.discover.dismissedKeys)
 
   const excluded = new Set<string>([
     ...library.map(bookKey),
     ...(friendCandidates ?? []).map(bookKey),
+    ...(dismissed ?? []),
   ])
   const pool = results.filter((r) => !excluded.has(bookKey(r)))
   const limit = layout === "carousel" ? 12 : 10

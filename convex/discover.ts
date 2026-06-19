@@ -1,6 +1,7 @@
-import { query } from "./_generated/server"
+import { mutation, query } from "./_generated/server"
+import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
-import { getUserId } from "./util"
+import { getUserId, requireUserId } from "./util"
 import { profileFor, toPublicProfile, type PublicProfile } from "./users"
 
 // Cross-shelf recommendation candidates (the "friends" source, Phase 1). Returns
@@ -159,5 +160,52 @@ export const friendCandidates = query({
           : undefined,
       })),
     )
+  },
+})
+
+// ── "Not interested" — declining off-shelf auto-recommendations ────────────────
+
+// The bookKey() identities the caller has dismissed. The discovery surfaces
+// (FriendPicks + DiscoverPicks) read this and filter these books out before
+// ranking, so a decline sticks across both sources and re-renders live.
+export const dismissedKeys = query({
+  args: {},
+  handler: async (ctx): Promise<string[]> => {
+    const me = await getUserId(ctx)
+    if (!me) return []
+    const rows = await ctx.db
+      .query("dismissedBooks")
+      .withIndex("by_user", (q) => q.eq("userId", me))
+      .collect()
+    return rows.map((r) => r.key)
+  },
+})
+
+// Mark a book "not interested" by its cross-shelf key. Idempotent — a repeat
+// dismiss is a no-op, so double-taps and re-dismissing a re-surfaced title are safe.
+export const dismissPick = mutation({
+  args: { key: v.string() },
+  handler: async (ctx, { key }) => {
+    const me = await requireUserId(ctx)
+    const existing = await ctx.db
+      .query("dismissedBooks")
+      .withIndex("by_user_key", (q) => q.eq("userId", me).eq("key", key))
+      .unique()
+    if (existing) return
+    await ctx.db.insert("dismissedBooks", { userId: me, key, createdAt: Date.now() })
+  },
+})
+
+// Undo a dismissal (the "Undo" on the toast) — deletes the row so the book is
+// eligible to surface again. No-op if it wasn't dismissed.
+export const undismissPick = mutation({
+  args: { key: v.string() },
+  handler: async (ctx, { key }) => {
+    const me = await requireUserId(ctx)
+    const existing = await ctx.db
+      .query("dismissedBooks")
+      .withIndex("by_user_key", (q) => q.eq("userId", me).eq("key", key))
+      .unique()
+    if (existing) await ctx.db.delete(existing._id)
   },
 })

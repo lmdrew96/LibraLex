@@ -3,9 +3,10 @@
 import { useState } from "react"
 import { useMutation } from "convex/react"
 import { toast } from "sonner"
-import { Star } from "lucide-react"
+import { EyeOff, Star } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { FriendEndorsement } from "@/convex/discover"
+import { bookKey } from "@/lib/book-key"
 import { bookArgs, enrichInBackground, type AddCandidate } from "@/lib/enrich-on-add"
 import { cn } from "@/lib/utils"
 import { BookCover } from "@/components/book-cover"
@@ -89,7 +90,7 @@ export function OffShelfPick({
       onOpenChange={setOpen}
       trigger={trigger}
       headerExtra={endorsers.length ? <Endorsers endorsers={endorsers} /> : undefined}
-      footer={<AddActions book={book} onAdded={() => setOpen(false)} />}
+      footer={<AddActions book={book} onClose={() => setOpen(false)} />}
     />
   )
 }
@@ -137,9 +138,11 @@ function Stars({ n }: { n: number }) {
 // Add the pick to my shelf or wishlist, then enrich it once in the background —
 // the same path the add-book dialog uses. The live friendCandidates query drops
 // the book from the carousel as soon as it lands on my shelf.
-function AddActions({ book, onAdded }: { book: OffShelfBook; onAdded: () => void }) {
+function AddActions({ book, onClose }: { book: OffShelfBook; onClose: () => void }) {
   const addBook = useMutation(api.books.addBook)
   const applyEnrichment = useMutation(api.books.applyEnrichment)
+  const dismissPick = useMutation(api.discover.dismissPick)
+  const undismissPick = useMutation(api.discover.undismissPick)
   const [saving, setSaving] = useState(false)
 
   // "I've read it" logs the book as read but not owned (ownership "none") in one tap —
@@ -155,7 +158,7 @@ function AddActions({ book, onAdded }: { book: OffShelfBook; onAdded: () => void
       const id = await addBook({ ...bookArgs(book), ownership, readStatus: extras.readStatus })
       toast.success(extras.message)
       void enrichInBackground(id, book, applyEnrichment)
-      onAdded()
+      onClose()
     } catch {
       toast.error("Couldn't add that book.")
     } finally {
@@ -163,34 +166,62 @@ function AddActions({ book, onAdded }: { book: OffShelfBook; onAdded: () => void
     }
   }
 
+  // Decline the pick: hide it from the discovery surfaces by its stable key. Close
+  // first so the dialog doesn't linger over a book that's about to vanish, then
+  // offer an Undo on the toast (mis-taps on a small tile are easy).
+  const notInterested = async () => {
+    if (saving) return
+    const key = bookKey(book)
+    onClose()
+    try {
+      await dismissPick({ key })
+      toast(`Got it — won't suggest “${book.title}” again.`, {
+        action: { label: "Undo", onClick: () => void undismissPick({ key }) },
+      })
+    } catch {
+      toast.error("Couldn't update that. Try again.")
+    }
+  }
+
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button
-        variant="calm"
-        size="sm"
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="calm"
+          size="sm"
+          disabled={saving}
+          onClick={() => add("owned", { message: `Added “${book.title}” to your shelf.` })}
+        >
+          I own it
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={saving}
+          onClick={() => add("wishlist", { message: `Added “${book.title}” to your wishlist.` })}
+        >
+          Add to wishlist
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={saving}
+          onClick={() =>
+            add("none", { readStatus: "read", message: `Logged “${book.title}” as read.` })
+          }
+        >
+          I&apos;ve read it
+        </Button>
+      </div>
+      <button
+        type="button"
+        onClick={notInterested}
         disabled={saving}
-        onClick={() => add("owned", { message: `Added “${book.title}” to your shelf.` })}
+        className="inline-flex items-center gap-1.5 self-start rounded-full text-sm font-medium text-teal/70 transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40 disabled:opacity-50"
       >
-        I own it
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={saving}
-        onClick={() => add("wishlist", { message: `Added “${book.title}” to your wishlist.` })}
-      >
-        Add to wishlist
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={saving}
-        onClick={() =>
-          add("none", { readStatus: "read", message: `Logged “${book.title}” as read.` })
-        }
-      >
-        I&apos;ve read it
-      </Button>
+        <EyeOff className="h-4 w-4" />
+        Not interested
+      </button>
     </div>
   )
 }

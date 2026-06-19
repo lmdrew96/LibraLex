@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api"
 import type { FriendEndorsement } from "@/convex/discover"
 import type { BookWithCover } from "@/lib/types"
 import { moreLikeThisFromPool, recommendFromPool } from "@/lib/recommend"
+import { bookKey } from "@/lib/book-key"
 import { OffShelfPick } from "@/components/off-shelf-pick"
 import { PickShelf } from "@/components/pick-shelf"
 
@@ -64,13 +65,19 @@ export function FriendPicks({
   layout: "carousel" | "grid"
 }) {
   const candidates = useQuery(api.discover.friendCandidates)
+  const dismissed = useQuery(api.discover.dismissedKeys)
   if (!candidates || candidates.length === 0) return null
+
+  // Drop anything the user marked "not interested" before ranking.
+  const dismissedSet = new Set(dismissed ?? [])
+  const visible = candidates.filter((c) => !dismissedSet.has(bookKey(c)))
+  if (visible.length === 0) return null
 
   const limit = layout === "carousel" ? 12 : 10
   const ranked = (
     target
-      ? moreLikeThisFromPool(target, library, candidates)
-      : recommendFromPool(library, candidates)
+      ? moreLikeThisFromPool(target, library, visible)
+      : recommendFromPool(library, visible)
   )
     .map((p) => ({ ...p, score: p.score * friendBoost(p.book.endorsers) }))
     .sort((a, b) => b.score - a.score)
