@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import type { BookInfo } from "@/lib/types"
+import { isLikelyEnglish } from "@/convex/normalize"
 
 // On-demand book enrichment: summary, subjects, author bios. Open Library is the
 // source for subjects + author bios (OL-native data Google Books doesn't expose);
@@ -89,8 +90,11 @@ const fetchWork = async (
   if (!res.ok) throw new Error(`Open Library work ${res.status}`)
   const work = (await res.json()) as OpenLibraryWork
   const descRaw = asText(work.description)
+  const desc = descRaw ? cleanOpenLibrary(descRaw) : undefined
   return {
-    description: descRaw ? cleanOpenLibrary(descRaw) : undefined,
+    // OL has no language tag on the work, so the text guard keeps a non-English
+    // summary out (the Google Books fallback below, English-restricted, takes over).
+    description: desc && isLikelyEnglish(desc) ? desc : undefined,
     subjects: (work.subjects ?? []).slice(0, MAX_SUBJECTS),
     authorKeys: (work.authors ?? [])
       .map((a) => a.author?.key)
@@ -129,6 +133,11 @@ const fetchGoogleDescription = async (
     const apiKey = process.env.GOOGLE_BOOKS_API_KEY
     const keyParam = apiKey ? `&key=${apiKey}` : ""
 
+    // Only keep an English blurb: trust GB's language tag when present, fall back to
+    // the text guard when it's absent.
+    const isEnglishDesc = (desc: string, lang: string | undefined): boolean =>
+      (!lang || lang.toLowerCase().startsWith("en")) && isLikelyEnglish(desc)
+
     // ISBN-exact: trust items[0] directly.
     if (isbn) {
       const res = await fetchWithTimeout(
@@ -136,27 +145,32 @@ const fetchGoogleDescription = async (
         GOOGLE_TIMEOUT_MS,
       )
       if (res.ok) {
-        const data = (await res.json()) as { items?: Array<{ volumeInfo?: { description?: string } }> }
-        const desc = data.items?.[0]?.volumeInfo?.description
-        if (desc) return stripHtml(desc)
+        const data = (await res.json()) as {
+          items?: Array<{ volumeInfo?: { description?: string; language?: string } }>
+        }
+        const info = data.items?.[0]?.volumeInfo
+        const desc = info?.description ? stripHtml(info.description) : undefined
+        if (desc && isEnglishDesc(desc, info?.language)) return desc
       }
     }
 
     // No ISBN (or ISBN missed): title+author query with an overlap guard.
+    // `langRestrict=en` biases Google toward the English edition's blurb.
     const q = [`intitle:${title}`, author ? `inauthor:${author}` : ""].filter(Boolean).join("+")
     const res = await fetchWithTimeout(
-      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5${keyParam}`,
+      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5&langRestrict=en${keyParam}`,
       GOOGLE_TIMEOUT_MS,
     )
     if (!res.ok) return undefined
     const data = (await res.json()) as {
-      items?: Array<{ volumeInfo?: { description?: string; title?: string } }>
+      items?: Array<{ volumeInfo?: { description?: string; title?: string; language?: string } }>
     }
     const want = normalizeTitle(title)
     const key = want.slice(0, 12)
     const match = (data.items ?? []).find((item) => {
       const info = item.volumeInfo
       if (!info?.description) return false
+      if (!isEnglishDesc(stripHtml(info.description), info.language)) return false
       const got = normalizeTitle(info.title ?? "")
       return Boolean(got) && (got.includes(key) || want.includes(got.slice(0, 12)))
     })

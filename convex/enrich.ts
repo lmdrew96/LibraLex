@@ -1,4 +1,4 @@
-import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
+import { isLikelyEnglish, normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
 
 /** A fully enriched, cacheable book record — search-result fields plus the merged
  *  enrichment (description/categories/subjects/authorBios) written to Convex so the
@@ -130,6 +130,7 @@ const fetchGoogleVolumeByIsbn = async (isbn: string): Promise<GoogleVolume | nul
           publishedDate?: string
           pageCount?: number
           description?: string
+          language?: string
           categories?: string[]
           imageLinks?: { thumbnail?: string; smallThumbnail?: string }
           averageRating?: number
@@ -140,6 +141,11 @@ const fetchGoogleVolumeByIsbn = async (isbn: string): Promise<GoogleVolume | nul
     const info = data.items?.[0]?.volumeInfo
     if (!info) return null
     const thumb = info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail
+    // Keep only an English summary: trust GB's language tag when present, and run
+    // the text guard as a backstop for the (common) case where it's absent. Biblio
+    // fields below are language-agnostic, so they're used regardless.
+    const gbDesc = info.description ? stripHtml(info.description) : undefined
+    const gbLangOk = !info.language || info.language.toLowerCase().startsWith("en")
     // Only trust a rating that's backed by at least one vote — GB occasionally
     // returns an averageRating with a 0/absent count.
     const ratingsCount =
@@ -148,7 +154,7 @@ const fetchGoogleVolumeByIsbn = async (isbn: string): Promise<GoogleVolume | nul
       authors: info.authors ?? [],
       year: parseYear(info.publishedDate),
       pageCount: typeof info.pageCount === "number" && info.pageCount > 0 ? info.pageCount : undefined,
-      description: info.description ? stripHtml(info.description) : undefined,
+      description: gbDesc && gbLangOk && isLikelyEnglish(gbDesc) ? gbDesc : undefined,
       categories: info.categories ?? [],
       thumbnail: thumb ? thumb.replace(/^http:\/\//, "https://") : undefined,
       isComic: isComicCategory(info.categories ?? []),
@@ -214,8 +220,11 @@ const fetchOpenLibraryWork = async (workKey: string): Promise<OpenLibraryWork | 
       authors?: Array<{ author?: { key?: string } }>
     }
     const descRaw = asText(work.description)
+    const desc = descRaw ? cleanOpenLibrary(descRaw) : undefined
     return {
-      description: descRaw ? cleanOpenLibrary(descRaw) : undefined,
+      // OL work records carry no language tag, so lean on the text guard to keep a
+      // Portuguese/Spanish summary off the shelf.
+      description: desc && isLikelyEnglish(desc) ? desc : undefined,
       subjects: work.subjects ?? [],
       authorKeys: (work.authors ?? [])
         .map((a) => a.author?.key)

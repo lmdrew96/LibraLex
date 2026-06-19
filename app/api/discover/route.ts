@@ -91,7 +91,10 @@ const fetchSubject = async (subject: string, page: number): Promise<DiscoveryCan
   const cached = subjectCache.get(cacheKey)
   if (cached && Date.now() - cached.at < SUBJECT_CACHE_TTL_MS) return cached.candidates
   try {
-    const q = `subject:"${subject.replace(/"/g, "")}" AND first_publish_year:[${YEAR_FLOOR} TO ${YEAR_CEIL}]`
+    // `language:eng` keeps auto-recommendations English — it filters server-side to
+    // works with an English edition (whose OL work title is reliably English), so a
+    // Portuguese/Spanish title never reaches the Discover row and the page stays full.
+    const q = `subject:"${subject.replace(/"/g, "")}" AND language:eng AND first_publish_year:[${YEAR_FLOOR} TO ${YEAR_CEIL}]`
     const url =
       `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}` +
       `&sort=readinglog&limit=${PER_SUBJECT}&offset=${page * PER_SUBJECT}&fields=${SEARCH_FIELDS}`

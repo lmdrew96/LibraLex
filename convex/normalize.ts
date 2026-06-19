@@ -53,6 +53,38 @@ export const normalizeAuthors = (authors: string[]): string[] => {
   return collapsed.slice(0, MAX_AUTHORS)
 }
 
+// High-frequency English function words chosen to NOT collide with common
+// Spanish/Portuguese words (so "a", "as", "no", "e", "o", "de", "que" are
+// deliberately absent). English prose is ~30–50% function words, so genuine
+// English easily clears the threshold below while Romance-language text scores
+// near zero — a wide safety margin against false positives.
+const ENGLISH_MARKERS = new Set([
+  "the", "and", "of", "to", "in", "is", "that", "was", "were", "for", "with",
+  "this", "these", "those", "they", "them", "their", "there", "his", "her",
+  "she", "he", "which", "what", "when", "where", "who", "why", "how", "would",
+  "could", "should", "will", "can", "have", "has", "had", "been", "are", "not",
+  "but", "about", "into", "than", "then", "your", "you", "our", "all", "one",
+  "out", "from", "by", "on", "or", "an", "it", "as", "at", "we", "if", "so",
+  "after", "before", "while", "between", "through", "such", "only", "other",
+])
+
+/**
+ * Conservative "is this English?" guard for free text (descriptions/bios), used to
+ * keep non-English summaries off the shelf. Pure heuristic — no I/O, no language
+ * library — so it's safe in Convex mutations and shared by the enrich pipeline and
+ * the book-info route. Counts the share of distinctly-English function words; very
+ * short text (< 8 words) is too small to judge, so it passes through to avoid
+ * dropping a legitimate one-line English blurb. Accented Romance-language words
+ * (ã, é, ñ) simply don't match [a-z], so foreign text lands well under the bar.
+ */
+export const isLikelyEnglish = (text: string): boolean => {
+  const words = text.toLowerCase().match(/[a-z]+/g) ?? []
+  if (words.length < 8) return true
+  let hits = 0
+  for (const w of words) if (ENGLISH_MARKERS.has(w)) hits++
+  return hits / words.length >= 0.06
+}
+
 /**
  * Reject impossible years (≤ 0 or in the future) → undefined. Plausible-but-
  * possibly-wrong years (e.g. an edition-confused date) pass through untouched
