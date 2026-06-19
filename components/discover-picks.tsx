@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { useQuery } from "convex/react"
 import { Compass } from "lucide-react"
 import { api } from "@/convex/_generated/api"
@@ -54,7 +55,7 @@ export function DiscoverPicks({
       ? (target.subjects ?? []).slice(0, 4)
       : topTasteSubjects(library)
     : []
-  const { results, loading } = useDiscover(subjects)
+  const { results, loading, loadMore, exhausted } = useDiscover(subjects)
   // Shared with FriendPicks' subscription (Convex dedupes identical queries), so
   // this is free — we read it only to exclude books already shown as friend picks.
   const friendCandidates = useQuery(api.discover.friendCandidates)
@@ -72,6 +73,18 @@ export function DiscoverPicks({
   const ranked = (
     target ? moreLikeThisFromPool(target, library, pool) : recommendFromPool(library, pool)
   ).slice(0, limit)
+
+  // Backfill: once a page has landed, if dismissals (or exclusions) have thinned the
+  // visible row below its target, pull the next catalog page so a fresh title fills
+  // the gap instead of the row just shrinking. Guarded by `loading`/`exhausted` and
+  // the hook's page cap, so it pages in one-at-a-time and stops when the row is full
+  // or the catalog runs dry. `results.length > 0` waits for page 0 to avoid racing
+  // the initial fetch.
+  useEffect(() => {
+    if (active && !loading && !exhausted && results.length > 0 && ranked.length < limit) {
+      loadMore()
+    }
+  }, [active, loading, exhausted, results.length, ranked.length, limit, loadMore])
 
   // The wrapper is always rendered so the observer has something to watch; content
   // swaps in once the catalog responds.

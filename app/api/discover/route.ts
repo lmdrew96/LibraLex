@@ -81,17 +81,20 @@ const mapDoc = (d: OLSearchDoc): DiscoveryCandidate | null => {
   }
 }
 
-// The popular, contemporary works tagged with one subject. The subject is matched
-// as a quoted phrase so multi-word stored subjects ("Fantasy fiction") resolve.
-const fetchSubject = async (subject: string): Promise<DiscoveryCandidate[]> => {
-  const cacheKey = subject.trim().toLowerCase()
+// The popular, contemporary works tagged with one subject, for one page of the
+// readinglog ranking. The subject is matched as a quoted phrase so multi-word
+// stored subjects ("Fantasy fiction") resolve. `page` offsets into the ranking so
+// the client can pull deeper titles to backfill dismissed picks — each page is
+// cached independently (offset is part of the cache key).
+const fetchSubject = async (subject: string, page: number): Promise<DiscoveryCandidate[]> => {
+  const cacheKey = `${subject.trim().toLowerCase()}@${page}`
   const cached = subjectCache.get(cacheKey)
   if (cached && Date.now() - cached.at < SUBJECT_CACHE_TTL_MS) return cached.candidates
   try {
     const q = `subject:"${subject.replace(/"/g, "")}" AND first_publish_year:[${YEAR_FLOOR} TO ${YEAR_CEIL}]`
     const url =
       `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}` +
-      `&sort=readinglog&limit=${PER_SUBJECT}&fields=${SEARCH_FIELDS}`
+      `&sort=readinglog&limit=${PER_SUBJECT}&offset=${page * PER_SUBJECT}&fields=${SEARCH_FIELDS}`
     const res = await fetchWithTimeout(url, OL_TIMEOUT_MS)
     if (!res.ok) return cached?.candidates ?? []
     const data = (await res.json()) as { docs?: OLSearchDoc[] }
@@ -108,10 +111,16 @@ const fetchSubject = async (subject: string): Promise<DiscoveryCandidate[]> => {
 
 export async function POST(request: Request): Promise<NextResponse> {
   let subjects: string[] = []
+  let page = 0
   try {
-    const body = (await request.json()) as { subjects?: unknown }
+    const body = (await request.json()) as { subjects?: unknown; page?: unknown }
     if (Array.isArray(body.subjects)) {
       subjects = body.subjects.filter((s): s is string => typeof s === "string")
+    }
+    // Clamp the page into a sane window — page 0 is the popular head; deeper pages
+    // backfill dismissals. The ceiling bounds the fan-out of slow OL calls.
+    if (typeof body.page === "number" && Number.isFinite(body.page)) {
+      page = Math.min(Math.max(Math.floor(body.page), 0), 10)
     }
   } catch {
     return NextResponse.json({ results: [] satisfies DiscoveryCandidate[] })
@@ -134,7 +143,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   // Fan out across subjects in parallel (each cached); merge, deduping by work key.
-  const batches = await Promise.all(wanted.map(fetchSubject))
+  const batches = await Promise.all(wanted.map((s) => fetchSubject(s, page)))
   const byKey = new Map<string, DiscoveryCandidate>()
   for (const cands of batches) {
     for (const c of cands) {
