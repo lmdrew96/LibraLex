@@ -10,13 +10,19 @@ import type { Id } from "@/convex/_generated/dataModel"
 import { AppShell } from "@/components/app-shell"
 import { BookCover } from "@/components/book-cover"
 import { BookInfoDialog } from "@/components/book-info-dialog"
+import { DiscoverPicks } from "@/components/discover-picks"
 import { EmptyState } from "@/components/empty-state"
 import { FriendAvatar } from "@/components/friend-avatar"
+import { FriendPicks } from "@/components/friend-picks"
+import { RecommendedForYou } from "@/components/recommended-for-you"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function RecsPage() {
   const inbox = useQuery(api.recs.getInbox)
+  // Whole library (any shelf) feeds the browse carousels — taste from read books,
+  // candidates from unread owned + wishlist. Moved here off the Shelf page.
+  const allBooks = useQuery(api.books.listBooks, {})
   const markAllRead = useMutation(api.recs.markAllRead)
   const addToShelf = useMutation(api.recs.addRecToShelf)
   const dismiss = useMutation(api.recs.dismissRec)
@@ -50,8 +56,26 @@ export default function RecsPage() {
     <AppShell>
       <div className="mb-6">
         <h1 className="text-3xl font-semibold">Recommendations</h1>
-        <p className="mt-1 text-teal">Books your friends thought you&apos;d love.</p>
+        <p className="mt-1 text-teal">
+          Picks shaped by your taste, your friends&apos; shelves, and the wider catalog.
+        </p>
       </div>
+
+      {/* Browse: taste-based, friends' shelves, and catalog discovery — moved here
+          off the Shelf page to keep the shelf focused on your books. */}
+      {allBooks && allBooks.length > 0 && (
+        <div className="mb-10 flex flex-col gap-6">
+          <RecommendedForYou books={allBooks} />
+          <FriendPicks library={allBooks} title="From your friends" layout="carousel" />
+          <DiscoverPicks library={allBooks} title="Discover" layout="carousel" eager />
+        </div>
+      )}
+
+      {/* Friend-sent inbox — specific books a friend pushed to you. */}
+      <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-teal">
+        <Sparkles className="h-4 w-4" />
+        Sent to you by friends
+      </h2>
 
       {inbox === undefined ? (
         <ul className="flex flex-col gap-3">
@@ -69,7 +93,7 @@ export default function RecsPage() {
       ) : inbox.length === 0 ? (
         <EmptyState
           icon={Sparkles}
-          title="No recommendations yet"
+          title="Nothing sent yet"
           message="When a friend sends you a book, it lands here. Open a friend's shelf, or recommend something from your own book pages to get the swap going."
         />
       ) : (

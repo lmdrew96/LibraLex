@@ -10,10 +10,7 @@ import { AppShell } from "@/components/app-shell"
 import { AddBookDialog } from "@/components/add-book-dialog"
 import { BookGrid, BookGridSkeleton } from "@/components/book-grid"
 import { EmptyState } from "@/components/empty-state"
-import { DiscoverPicks } from "@/components/discover-picks"
-import { FriendPicks } from "@/components/friend-picks"
 import { ReadNext } from "@/components/read-next"
-import { RecommendedForYou } from "@/components/recommended-for-you"
 
 type Filter = "all" | ReadStatus
 type Sort = "added" | "title" | "author"
@@ -33,8 +30,8 @@ const SORTS: { key: Sort; label: string }[] = [
 
 export default function ShelfPage() {
   const books = useQuery(api.books.listBooks, { ownership: "owned" })
-  // Whole library (any shelf) feeds the recommender — taste comes from read books
-  // regardless of ownership, candidates from unread owned + wishlist.
+  // Whole library (any shelf) feeds the "Read next" card — taste from read books,
+  // candidates from unread. The browse carousels now live on the Recs page.
   const allBooks = useQuery(api.books.listBooks, {})
   const [filter, setFilter] = useState<Filter>("all")
   const [sort, setSort] = useState<Sort>("added")
@@ -61,14 +58,7 @@ export default function ShelfPage() {
         />
       ) : (
         <div className="flex flex-col gap-6">
-          {allBooks && allBooks.length > 0 && (
-            <>
-              <ReadNext books={allBooks} />
-              <RecommendedForYou books={allBooks} />
-              <FriendPicks library={allBooks} title="From your friends" layout="carousel" />
-              <DiscoverPicks library={allBooks} title="Discover" layout="carousel" eager />
-            </>
-          )}
+          {allBooks && allBooks.length > 0 && <ReadNext books={allBooks} />}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
