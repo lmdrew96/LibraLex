@@ -76,7 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               href="/settings"
               aria-label="Settings"
               className={cn(
-                "flex h-9 w-9 items-center justify-center rounded-full transition-colors",
+                "flex h-11 w-11 items-center justify-center rounded-full transition-colors",
                 pathname.startsWith("/settings")
                   ? "bg-teal text-surface"
                   : "text-ink/70 hover:bg-lavender/60",
@@ -97,13 +97,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={href}
                 href={href}
+                aria-label={label}
                 className={cn(
-                  "relative flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                  "relative flex h-11 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition-colors",
                   active ? "bg-teal text-surface" : "text-ink/70 hover:bg-lavender/60",
                 )}
               >
-                <Icon className="h-4 w-4" />
-                {label}
+                <Icon className="h-4 w-4 shrink-0" />
+                {/* On phones the 7-tab rail collapses to icons to de-crowd; the active
+                    tab keeps its label as the "you are here" anchor, and every tab
+                    shows its label again at sm+. aria-label covers screen readers. */}
+                <span className={cn(!active && "hidden sm:inline")}>{label}</span>
                 {badge > 0 && (
                   <span
                     className={cn(

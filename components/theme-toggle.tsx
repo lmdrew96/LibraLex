@@ -50,7 +50,7 @@ export function ThemeQuickToggle() {
       aria-label={`Switch to ${next} mode`}
       title={`Switch to ${next} mode`}
       onClick={() => setTheme(next)}
-      className="flex h-9 w-9 items-center justify-center rounded-full text-ink/70 transition-colors hover:bg-lavender/60"
+      className="flex h-11 w-11 items-center justify-center rounded-full text-ink/70 transition-colors hover:bg-lavender/60"
     >
       {resolvedTheme === "dark" ? (
         <Sun className="h-5 w-5" />

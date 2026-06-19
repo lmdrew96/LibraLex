@@ -278,7 +278,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
                   key={n}
                   onClick={() => setRating(n)}
                   aria-label={`Rate ${n} star${n === 1 ? "" : "s"}`}
-                  className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+                  className="rounded-full p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
                 >
                   <Star
                     className={cn(
