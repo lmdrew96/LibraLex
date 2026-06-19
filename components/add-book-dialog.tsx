@@ -23,7 +23,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 type Step = "search" | "scan" | "ownership" | "manual"
 
-export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
+export function AddBookDialog({
+  trigger,
+  compact = false,
+}: {
+  trigger?: ReactNode
+  // `compact` collapses the default trigger to an icon-only 44px button on
+  // phones (label returns at sm+) — used in the header, where space is tight.
+  compact?: boolean
+}) {
   const addBook = useMutation(api.books.addBook)
   const applyEnrichment = useMutation(api.books.applyEnrichment)
 
@@ -152,7 +160,12 @@ export function AddBookDialog({ trigger }: { trigger?: ReactNode }) {
     }
   }
 
-  const defaultTrigger = (
+  const defaultTrigger = compact ? (
+    <Button aria-label="Add book" className="w-11 px-0 sm:w-auto sm:px-6">
+      <BookPlus className="h-5 w-5" />
+      <span className="hidden sm:inline">Add book</span>
+    </Button>
+  ) : (
     <Button>
       <BookPlus className="h-5 w-5" />
       Add book

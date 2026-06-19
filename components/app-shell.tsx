@@ -69,8 +69,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/" className="text-2xl font-semibold text-ink">
             LibraLex
           </Link>
-          <div className="flex items-center gap-3">
-            <AddBookDialog />
+          <div className="flex items-center gap-1.5 sm:gap-3">
+            <AddBookDialog compact />
             <ThemeQuickToggle />
             <Link
               href="/settings"
