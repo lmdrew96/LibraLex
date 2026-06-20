@@ -163,6 +163,18 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  // Finish date for a read book. A picked date is stored as UTC midnight of that
+  // day so it round-trips with the input and matches the stats' UTC year boundary;
+  // null is "don't remember" (counts all-time, not this year).
+  const setFinishedAt = async (ms: number | null) => {
+    try {
+      await updateBook({ id: book._id, patch: { finishedAt: ms } })
+      toast.success(ms === null ? "Finish date cleared." : "Finish date saved.")
+    } catch {
+      toast.error("Couldn't update the finish date.")
+    }
+  }
+
   const saveReview = async () => {
     if (reviewValue === (book.review ?? "")) return
     try {
@@ -267,6 +279,41 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
               value={book.readStatus}
               onChange={(v) => setStatus(v as ReadStatus)}
             />
+            {/* Finish date — only meaningful once a book is read. Drives the
+                "read this year" stats; "Don't remember" leaves it undated. */}
+            {book.readStatus === "read" && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+                <label htmlFor="finished-on" className="font-medium text-teal">
+                  Finished
+                </label>
+                <input
+                  id="finished-on"
+                  type="date"
+                  max={new Date().toISOString().slice(0, 10)}
+                  value={
+                    book.finishedAt !== undefined
+                      ? new Date(book.finishedAt).toISOString().slice(0, 10)
+                      : ""
+                  }
+                  onChange={(e) =>
+                    setFinishedAt(e.target.value ? Date.parse(`${e.target.value}T00:00:00Z`) : null)
+                  }
+                  className="rounded-xl border border-lavender bg-card px-2.5 py-1 text-ink focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
+                />
+                {book.finishedAt !== undefined ? (
+                  <button
+                    onClick={() => setFinishedAt(null)}
+                    className="text-xs text-teal hover:underline"
+                  >
+                    Don&apos;t remember
+                  </button>
+                ) : (
+                  <span className="text-xs text-teal/80">
+                    Undated — counts all-time, not this year.
+                  </span>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Rating */}

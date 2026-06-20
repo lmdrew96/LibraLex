@@ -222,6 +222,10 @@ export const updateBook = mutation({
       title: v.optional(v.string()),
       authors: v.optional(v.array(v.string())),
       libraryName: v.optional(v.string()),
+      // Explicit finish date from the mark-as-read control: a number sets it, null
+      // clears it ("don't remember"). Pulled out of the patch spread below because
+      // null isn't a Doc field value — clearing is an undefined patch in Convex.
+      finishedAt: v.optional(v.union(v.number(), v.null())),
     }),
   },
   handler: async (ctx, args) => {
@@ -229,23 +233,32 @@ export const updateBook = mutation({
     const book = await getOwnedBook(ctx, userId, args.id)
     const now = Date.now()
 
-    const updates: Partial<Doc<"books">> = { ...args.patch }
+    const { finishedAt: finishedAtInput, ...patch } = args.patch
+    const updates: Partial<Doc<"books">> = { ...patch }
 
     // Normalize edited author lists the same way writes do.
-    if (args.patch.authors !== undefined) {
-      updates.authors = normalizeAuthors(args.patch.authors)
+    if (patch.authors !== undefined) {
+      updates.authors = normalizeAuthors(patch.authors)
     }
 
-    if (args.patch.readStatus === "reading" && !book.startedAt) {
+    if (patch.readStatus === "reading" && !book.startedAt) {
       updates.startedAt = now
     }
-    if (args.patch.readStatus === "read" && !book.finishedAt) {
+
+    // Finish date drives the "read this year" stats. An explicit value from the
+    // date control wins (number sets it; null clears it — the read still counts
+    // all-time, just not in any year). Without one, flipping to "read" stamps now
+    // as the default for a just-finished book; a back-catalog entry can re-date or
+    // clear it (or use the bulk "undate" action in Settings).
+    if (finishedAtInput !== undefined) {
+      updates.finishedAt = finishedAtInput ?? undefined
+    } else if (patch.readStatus === "read" && !book.finishedAt) {
       updates.finishedAt = now
     }
 
     // Switching off the library shelf retires its loan fields (setting an
     // optional field to undefined removes it in Convex).
-    if (args.patch.ownership && args.patch.ownership !== "library") {
+    if (patch.ownership && patch.ownership !== "library") {
       updates.checkoutDate = undefined
       updates.dueDate = undefined
       updates.returned = undefined
@@ -253,6 +266,30 @@ export const updateBook = mutation({
     }
 
     await ctx.db.patch(args.id, updates)
+  },
+})
+
+// One-time correction: clear finishedAt on every "read" book. Marking a book read
+// stamps today's date, so entering a years-old back-catalog in one sitting dates
+// them all to today and inflates "read this year." This nulls those dates in bulk
+// (all-time count is unchanged — it's just readStatus === "read"); the user then
+// re-dates only the books they actually finished this year. Returns the count cleared.
+export const undateReadBooks = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx)
+    const reads = await ctx.db
+      .query("books")
+      .withIndex("by_user_readStatus", (q) => q.eq("userId", userId).eq("readStatus", "read"))
+      .collect()
+    let cleared = 0
+    for (const b of reads) {
+      if (b.finishedAt !== undefined) {
+        await ctx.db.patch(b._id, { finishedAt: undefined })
+        cleared++
+      }
+    }
+    return { cleared }
   },
 })
 

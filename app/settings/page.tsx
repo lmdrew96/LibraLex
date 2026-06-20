@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
-import { Bot, Copy, Loader2, Palette, RefreshCw, ShieldAlert, Trash2 } from "lucide-react"
+import { Bot, Copy, History, Loader2, Palette, RefreshCw, ShieldAlert, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { AppShell } from "@/components/app-shell"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -14,7 +14,9 @@ export default function SettingsPage() {
   const token = useQuery(api.mcpAuth.getMyMcpToken)
   const generate = useAction(api.mcpAuth.generateMcpToken)
   const revoke = useMutation(api.mcpAuth.revokeMcpToken)
+  const undateReadBooks = useMutation(api.books.undateReadBooks)
   const [busy, setBusy] = useState(false)
+  const [undating, setUndating] = useState(false)
 
   // Build the link from the app's own origin (libra.adhdesigns.dev in prod). A
   // Next rewrite proxies /mcp/* to the Convex HTTP-actions endpoint, so the URL we
@@ -59,6 +61,29 @@ export default function SettingsPage() {
       toast.success("MCP URL copied.")
     } catch {
       toast.error("Couldn't copy — select the URL and copy it manually.")
+    }
+  }
+
+  const onUndate = async () => {
+    if (
+      !confirm(
+        "Clear the finish date on every book marked read? Your all-time count stays the same; your “read this year” stats drop to only the books you re-date afterward. This can't be undone in bulk.",
+      )
+    ) {
+      return
+    }
+    setUndating(true)
+    try {
+      const { cleared } = await undateReadBooks({})
+      toast.success(
+        cleared === 0
+          ? "No dated reads to clear."
+          : `Cleared finish dates on ${cleared} book${cleared === 1 ? "" : "s"}.`,
+      )
+    } catch {
+      toast.error("Couldn't clear finish dates.")
+    } finally {
+      setUndating(false)
     }
   }
 
@@ -127,6 +152,27 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
+        <div className="mb-1 flex items-center gap-2">
+          <History className="h-5 w-5 text-teal" />
+          <h2 className="text-sm font-semibold text-teal">Reading history</h2>
+        </div>
+        <p className="mb-4 max-w-prose text-sm text-teal/90">
+          Marking a book read stamps today’s date, which feeds your “read this year” stats. If you
+          added a back-catalog of older books all at once, that inflates this year — clear the
+          finish dates here, then re-date just the ones you actually finished this year from their
+          detail page. Undated reads still count in your all-time total.
+        </p>
+        <Button variant="outline" size="sm" disabled={undating} onClick={onUndate}>
+          {undating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <History className="h-4 w-4" />
+          )}
+          Clear finish dates on read books
+        </Button>
       </section>
     </AppShell>
   )

@@ -126,6 +126,12 @@ const cosine = (a: Map<string, number>, b: Map<string, number>): number => {
 export const tasteSourceCount = (books: RecBook[]): number =>
   books.filter((b) => b.readStatus === "read" || b.readStatus === "reading").length
 
+// FUTURE (finishedAt recency decay): now that books carry a finish date, the taste
+// profile could weight RECENT finishes over decade-old reads — multiply each book's
+// contribution by a decay on (now − finishedAt), so taste tracks what you read lately,
+// not what you read in college. Composes with the rating weight below; undated reads
+// (finishedAt null) would take a neutral mid-weight. Not built yet — hook only.
+
 /** The subjects that most define a user's taste — frequency across read/reading
  *  books, weighted by rating. Drives catalog discovery queries (the seed subjects
  *  we expand from). Empty until there's read history with subjects. */
