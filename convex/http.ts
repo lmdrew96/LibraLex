@@ -98,6 +98,84 @@ const TOOLS = [
       required: ["title"],
     },
   },
+  {
+    name: "add_book",
+    description:
+      "Add a book to a specific shelf by title — use this (not add_to_wishlist) when the user owns it, is reading it, has read it, or borrowed it from the library. Set ownership and optionally readStatus. Best-effort enriches with cover/year from Open Library. Idempotent: a same-title book already on that shelf isn't duplicated. A library add starts a loan with a 3-week due date.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Book title to add." },
+        author: { type: "string", description: "Author name, to pick the right edition." },
+        ownership: {
+          type: "string",
+          enum: ["owned", "wishlist", "library", "none"],
+          description:
+            "Which shelf. 'owned' = on their shelf, 'library' = borrowed (starts a loan), 'wishlist' = want it, 'none' = read but don't own.",
+        },
+        readStatus: {
+          type: "string",
+          enum: ["unread", "reading", "read"],
+          description: "Reading status. Defaults to 'unread'. Use 'reading' or 'read' when the user says so.",
+        },
+        libraryName: {
+          type: "string",
+          description: "For library adds: which library it's borrowed from.",
+        },
+      },
+      required: ["title", "ownership"],
+    },
+  },
+  {
+    name: "update_reading_status",
+    description:
+      "Update a book the user already has on a shelf: mark it reading/read/unread, set a 1–5 star rating, and/or save a review. Resolves the book by title. Use for 'I started X', 'I finished X', 'I'd give X 4 stars'. Provide at least one of readStatus, rating, or review.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Title of a book already on a shelf." },
+        author: { type: "string", description: "Author, to disambiguate same-titled books." },
+        readStatus: {
+          type: "string",
+          enum: ["unread", "reading", "read"],
+          description: "New reading status. 'reading' stamps a start date; 'read' stamps a finish date.",
+        },
+        rating: { type: "number", description: "Star rating, integer 1–5." },
+        review: { type: "string", description: "Free-text review/notes." },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "return_loan",
+    description:
+      "Mark an active library loan as returned, by title. Only searches the user's current (un-returned) library loans. Use for 'I returned X', 'took X back to the library'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Title of a book currently on loan." },
+        author: { type: "string", description: "Author, to disambiguate." },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "renew_loan",
+    description:
+      "Renew (extend) an active library loan, by title. Pushes the due date out by `days` from today (default 21, a standard loan period). Use for 'renew X', 'extend my loan on X'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Title of a book currently on loan." },
+        author: { type: "string", description: "Author, to disambiguate." },
+        days: {
+          type: "number",
+          description: "How many days to extend from today. Defaults to 21. Convert weeks to days (2 weeks = 14).",
+        },
+      },
+      required: ["title"],
+    },
+  },
 ] as const
 
 /** Pull the token out of the path: /mcp/<token> (query stripped, trailing / trimmed). */
@@ -111,6 +189,17 @@ function tokenFromPath(req: Request): string {
 
 const asEnum = <T extends string>(val: unknown, allowed: readonly T[]): T | undefined =>
   typeof val === "string" && (allowed as readonly string[]).includes(val) ? (val as T) : undefined
+
+/** Trim a string arg to undefined when empty/absent. */
+const optStr = (val: unknown): string | undefined =>
+  typeof val === "string" && val.trim() ? val.trim() : undefined
+
+/** Require a non-empty `title` arg, with a tool-named error if missing. */
+const reqTitle = (args: Record<string, unknown>, tool: string): string => {
+  const title = optStr(args.title)
+  if (!title) throw new Error(`${tool} requires a non-empty title`)
+  return title
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -254,17 +343,111 @@ async function dispatch(
     }
 
     case "add_to_wishlist": {
-      const title = typeof args.title === "string" ? args.title.trim() : ""
-      if (!title) throw new Error("add_to_wishlist requires a non-empty title")
-      const author = typeof args.author === "string" ? args.author.trim() || undefined : undefined
+      const title = reqTitle(args, "add_to_wishlist")
+      const author = optStr(args.author)
       const found = await lookupBook(title, author)
       const book = found ?? { title, authors: author ? [author] : [] }
-      const result = await ctx.runMutation(internal.mcpData.addWishlistBook, { userId, ...book })
+      const result = await ctx.runMutation(internal.mcpData.addBookForUser, {
+        userId,
+        ...book,
+        ownership: "wishlist",
+      })
       return textContent(
         result.status === "exists"
           ? { ok: true, alreadyOnWishlist: true, title: result.title }
           : { ok: true, added: true, title: result.title, enriched: Boolean(found) },
       )
+    }
+
+    case "add_book": {
+      const title = reqTitle(args, "add_book")
+      const author = optStr(args.author)
+      const ownership = asEnum(args.ownership, ["owned", "wishlist", "library", "none"] as const)
+      if (!ownership) throw new Error("add_book requires ownership (owned|wishlist|library|none)")
+      const readStatus = asEnum(args.readStatus, ["unread", "reading", "read"] as const)
+      const libraryName = optStr(args.libraryName)
+      const found = await lookupBook(title, author)
+      const book = found ?? { title, authors: author ? [author] : [] }
+      const result = await ctx.runMutation(internal.mcpData.addBookForUser, {
+        userId,
+        ...book,
+        ownership,
+        readStatus,
+        libraryName,
+      })
+      return textContent(
+        result.status === "exists"
+          ? { ok: true, alreadyOnShelf: true, title: result.title, ownership: result.ownership }
+          : {
+              ok: true,
+              added: true,
+              title: result.title,
+              ownership: result.ownership,
+              enriched: Boolean(found),
+            },
+      )
+    }
+
+    case "update_reading_status": {
+      const title = reqTitle(args, "update_reading_status")
+      const author = optStr(args.author)
+      const readStatus = asEnum(args.readStatus, ["unread", "reading", "read"] as const)
+      const review = optStr(args.review)
+      let rating: number | undefined
+      if (args.rating !== undefined && args.rating !== null) {
+        const r = Number(args.rating)
+        if (!Number.isInteger(r) || r < 1 || r > 5) {
+          throw new Error("rating must be an integer from 1 to 5")
+        }
+        rating = r
+      }
+      if (readStatus === undefined && rating === undefined && review === undefined) {
+        throw new Error("update_reading_status needs at least one of readStatus, rating, or review")
+      }
+      const result = await ctx.runMutation(internal.mcpData.setReadingStatusForUser, {
+        userId,
+        title,
+        author,
+        readStatus,
+        rating,
+        review,
+      })
+      return textContent(result.status === "updated" ? { ok: true, ...result } : result)
+    }
+
+    case "return_loan": {
+      const title = reqTitle(args, "return_loan")
+      const author = optStr(args.author)
+      const result = await ctx.runMutation(internal.mcpData.returnLoanForUser, {
+        userId,
+        title,
+        author,
+      })
+      return textContent(result.status === "returned" ? { ok: true, ...result } : result)
+    }
+
+    case "renew_loan": {
+      const title = reqTitle(args, "renew_loan")
+      const author = optStr(args.author)
+      const days =
+        typeof args.days === "number" && args.days > 0 ? Math.round(args.days) : 21
+      const now = Date.now()
+      const newDueDate = now + days * DAY_MS
+      const result = await ctx.runMutation(internal.mcpData.renewLoanForUser, {
+        userId,
+        title,
+        author,
+        newDueDate,
+      })
+      if (result.status !== "renewed") return textContent(result)
+      const tz = await ctx.runQuery(internal.mcpData.timeZoneForUser, { userId })
+      return textContent({
+        ok: true,
+        renewed: true,
+        title: result.title,
+        dueDate: civilDate(newDueDate, tz),
+        dueInDays: daysUntilDue(newDueDate, now, tz),
+      })
     }
 
     default:

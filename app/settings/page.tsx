@@ -86,9 +86,10 @@ export default function SettingsPage() {
           <h2 className="text-sm font-semibold text-teal">Connect to Claude (MCP)</h2>
         </div>
         <p className="mb-4 max-w-prose text-sm text-teal/90">
-          Generate a private link that lets Claude read your shelf — ask “what am I reading?”,
-          “what’s due soon?”, “have I read this?”, or “add Dune to my wishlist” right in chat. Add
-          the URL as a custom MCP connector in Claude.
+          Generate a private link that lets Claude read <em>and update</em> your shelf — ask “what
+          am I reading?”, “what’s due soon?”, or tell it “I finished Dune, 5 stars”, “add The Hobbit
+          to my shelf”, “I returned my library book” right in chat. Add the URL as a custom MCP
+          connector in Claude.
         </p>
 
         {token === undefined ? (
@@ -103,8 +104,8 @@ export default function SettingsPage() {
             <div className="flex items-start gap-2 rounded-xl bg-lavender/40 px-3 py-2 text-xs text-teal">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                Treat this URL like a password — anyone with it can read your shelf. Revoke and
-                regenerate if it ever leaks.
+                Treat this URL like a password — anyone with it can read and change your shelf.
+                Revoke and regenerate if it ever leaks.
               </span>
             </div>
             <code className="block overflow-x-auto whitespace-nowrap rounded-xl border border-lavender bg-surface px-3 py-2.5 font-mono text-xs text-ink">

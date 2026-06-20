@@ -1,5 +1,5 @@
 // Source-agnostic bibliographic normalization, applied on every book write
-// (addBook, addRecToShelf, addWishlistBook, updateBook) and reused by the one-off
+// (addBook, addRecToShelf, addBookForUser, updateBook) and reused by the one-off
 // backfill. These are PURE functions — no I/O — so they're safe to call from
 // Convex mutations (which can't fetch). The backfill action layers Google Books
 // re-fetching on top of these for the data only an external source can fix
