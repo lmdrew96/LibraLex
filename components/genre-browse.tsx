@@ -14,12 +14,23 @@ import { PickShelf } from "@/components/pick-shelf"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const ROW_LIMIT = 12
-// Keep this many ready picks beyond the visible row. A single-subject genre query
-// returns a shallow page (~14), so without a buffer a row has almost no surplus and
-// visibly shrinks when a pick is added/declined before a slow refetch lands. Prefetch
-// a buffer up front so a replacement is always pre-loaded — the headroom Discover gets
-// for free from its deeper multi-subject pool.
+// How far the per-visit window start rotates into a row's owned buffer. Each visit
+// shows a different `ROW_LIMIT`-wide slice (start cycles 0..ROTATION_RANGE-1), so the
+// genre rows surface fresh books across visits without the cross-carousel ASSIGNMENT
+// changing — a book never bounces between genres, only in/out of the visible window.
+const ROTATION_RANGE = 6
+// Ready picks kept beyond the rotated window for instant replenish. A single-subject
+// genre query returns a shallow page (~14), so without a buffer a row has almost no
+// surplus and visibly shrinks when a pick is added/declined before a slow refetch
+// lands — the headroom Discover gets for free from its deeper multi-subject pool.
 const REFILL_BUFFER = 6
+// Prefetch depth: deep enough to cover the rotated window's start offset, the row
+// itself, AND the replenish buffer, so both rotation and instant refill always hold.
+const BUFFER_TARGET = ROW_LIMIT + ROTATION_RANGE + REFILL_BUFFER
+// Per-visit counter persisted across sessions; each Search visit advances it so the
+// rotation window moves on. Read in an effect (never during render) to avoid an
+// SSR/hydration mismatch.
+const VISIT_KEY = "libralex.genreBrowseVisit"
 
 /** "Browse by genre" — the Search page's resting state. Shows a "Popular in <genre>"
  *  carousel for each of the user's favorite genres (or a default set until they pick
@@ -60,6 +71,21 @@ export function GenreBrowse() {
     }
     return owner
   }, [claims])
+
+  // Per-visit rotation seed. Starts at 0 (front window) for SSR + the first client
+  // render so hydration matches, then advances a persisted counter once mounted, so
+  // each visit to Search rotates the genre windows to a fresh slice.
+  const [visitSeed, setVisitSeed] = useState(0)
+  useEffect(() => {
+    try {
+      const prev = Number(window.localStorage.getItem(VISIT_KEY) ?? "0")
+      const next = Number.isFinite(prev) ? prev + 1 : 1
+      window.localStorage.setItem(VISIT_KEY, String(next))
+      setVisitSeed(next)
+    } catch {
+      // localStorage blocked (private mode) — stay at 0, i.e. no rotation.
+    }
+  }, [])
 
   // Wait for the profile so we don't flash the default set then swap to the user's.
   if (profile === undefined) {
@@ -103,6 +129,7 @@ export function GenreBrowse() {
             excluded={excluded}
             ownerByKey={ownerByKey}
             reportKeys={reportKeys}
+            visitSeed={visitSeed}
           />
         ))}
       </div>
@@ -122,12 +149,14 @@ function GenreRow({
   excluded,
   ownerByKey,
   reportKeys,
+  visitSeed,
 }: {
   index: number
   genre: Genre
   excluded: Set<string>
   ownerByKey: Map<string, number>
   reportKeys: (index: number, keys: string[]) => void
+  visitSeed: number
 }) {
   const { results, loading, loadMore, exhausted } = useDiscover([genre.subject])
 
@@ -152,19 +181,27 @@ function GenreRow({
   // Works this row owns (earliest genre wins; an unseen key defaults to self so
   // nothing flashes empty on first paint). Held as a buffer deeper than the row so an
   // added/declined pick is replaced instantly from the surplus rather than the row
-  // shrinking. `visible` is just the front slice of that owned buffer.
+  // shrinking.
   const owned = pool.filter((p) => (ownerByKey.get(editionKey(p)) ?? index) === index)
-  const visible = owned.slice(0, ROW_LIMIT)
+
+  // Per-visit window into the owned buffer. The start is a FIXED offset (not a
+  // length-dependent cyclic shift), so declining a pick just slides the next one in
+  // rather than reshuffling the row. Clamped so the window always fills when the
+  // buffer is deep enough; offset is staggered by row so genres don't all rotate in
+  // lockstep.
+  const maxStart = Math.max(0, owned.length - ROW_LIMIT)
+  const start = Math.min((visitSeed + index) % ROTATION_RANGE, maxStart)
+  const visible = owned.slice(start, start + ROW_LIMIT)
 
   useEffect(() => {
-    // Prefetch until the owned buffer comfortably clears the row, so add/decline pulls
-    // a ready replacement in with no fetch-wait. Bounded by the hook's page cap, and
-    // it also refills the buffer after the catalog backfills a consumed pick.
+    // Prefetch until the owned buffer clears the rotated window plus its replenish
+    // headroom, so both rotation and instant add/decline refill always hold. Bounded
+    // by the hook's page cap; also refills after the catalog backfills a consumed pick.
     if (
       !loading &&
       !exhausted &&
       results.length > 0 &&
-      owned.length < ROW_LIMIT + REFILL_BUFFER
+      owned.length < BUFFER_TARGET
     ) {
       loadMore()
     }
