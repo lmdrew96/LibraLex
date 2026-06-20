@@ -22,6 +22,7 @@ import { FriendPicks } from "@/components/friend-picks"
 import { MoreLikeThis } from "@/components/more-like-this"
 import { RatingsSummary } from "@/components/ratings-summary"
 import { RecommendDialog } from "@/components/recommend-dialog"
+import { ThriftBooksLink } from "@/components/thriftbooks-link"
 import { Button } from "@/components/ui/button"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -277,7 +278,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
             communityCount={community?.count}
           />
 
-          <div className="mt-4">
+          <div className="mt-4 flex flex-wrap gap-2">
             <RecommendDialog
               book={book}
               trigger={
@@ -287,6 +288,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
                 </Button>
               }
             />
+            <ThriftBooksLink book={book} />
           </div>
 
           {activeLoan && book.dueDate !== undefined && (

@@ -12,6 +12,7 @@ import { AddBookDialog } from "@/components/add-book-dialog"
 import { BookCover } from "@/components/book-cover"
 import { BookGridSkeleton } from "@/components/book-grid"
 import { EmptyState } from "@/components/empty-state"
+import { ThriftBooksLink } from "@/components/thriftbooks-link"
 import { Button } from "@/components/ui/button"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 
@@ -94,18 +95,21 @@ function WishlistCard({ book }: { book: BookWithCover }) {
         <p className="truncate text-sm font-medium text-ink">{book.title}</p>
         <p className="truncate text-xs text-teal">{book.authors[0] ?? "Unknown author"}</p>
       </div>
-      <div className="flex items-center gap-1.5">
-        <Button size="sm" variant="primary" className="flex-1" onClick={promote}>
-          <Check className="h-4 w-4" />
-          I got this
-        </Button>
-        <button
-          onClick={remove}
-          aria-label={`Remove ${book.title} from wishlist`}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-teal transition-colors hover:bg-lavender focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="primary" className="flex-1" onClick={promote}>
+            <Check className="h-4 w-4" />
+            I got this
+          </Button>
+          <button
+            onClick={remove}
+            aria-label={`Remove ${book.title} from wishlist`}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-teal transition-colors hover:bg-lavender focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+        <ThriftBooksLink book={book} label="ThriftBooks" className="w-full" />
       </div>
       {confirmDialog}
     </div>
