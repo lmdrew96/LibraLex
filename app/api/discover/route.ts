@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { ConvexHttpClient } from "convex/browser"
+import { api } from "@/convex/_generated/api"
 
 // Catalog discovery (Recommendations v2, Phase 2). Given a set of subjects — the
 // user's top taste subjects, or one book's subjects — expand them into candidate
@@ -37,6 +39,12 @@ const SEARCH_FIELDS = "key,title,author_name,cover_i,first_publish_year,subject"
 // instant. A slow/failed refetch falls back to the stale entry.
 const SUBJECT_CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6h
 const subjectCache = new Map<string, { candidates: DiscoveryCandidate[]; at: number }>()
+
+// Convex client for the precomputed discovery cache (convex/discoverCache.ts, refreshed
+// daily by a cron). It's the fast, reliable source for the fixed genre subjects; the
+// per-user taste subjects on the Recs row aren't precomputed and fall through to OL.
+const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL
+const convexClient = CONVEX_URL ? new ConvexHttpClient(CONVEX_URL) : null
 
 // Edge cache (Vercel CDN) for healthy responses — the real speed/reliability win: a
 // warm (subject, page) is served from the edge with no function run and no OL call,
@@ -111,6 +119,21 @@ const fetchSubjectOnce = async (subject: string, page: number): Promise<Discover
 }
 
 const fetchSubject = async (subject: string, page: number): Promise<DiscoveryCandidate[]> => {
+  // 1. Precomputed Convex pool (daily cron) — the fast, reliable path for genre
+  //    subjects. The whole deep pool ships on page 0; deeper pages are empty for a
+  //    cached subject (the carousel reads it all at once and stops paginating).
+  //    try/catch so an unreachable / not-yet-deployed Convex just falls through to OL.
+  if (convexClient) {
+    try {
+      const precomputed = await convexClient.query(api.discoverCache.getBySubject, { subject })
+      if (precomputed.length > 0) return page === 0 ? precomputed : []
+    } catch {
+      // Convex unreachable or function not deployed yet — fall through to live OL.
+    }
+  }
+
+  // 2. Module cache + live OL (the fallback for not-yet-precomputed subjects, e.g.
+  //    per-user taste subjects, and until the cron first runs).
   const cacheKey = `${subject.trim().toLowerCase()}@${page}`
   const cached = subjectCache.get(cacheKey)
   if (cached && Date.now() - cached.at < SUBJECT_CACHE_TTL_MS) return cached.candidates

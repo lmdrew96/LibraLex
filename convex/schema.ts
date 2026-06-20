@@ -153,4 +153,24 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_key", ["userId", "key"]),
+
+  // Precomputed catalog discovery — "popular books in <subject>" from Open Library,
+  // refreshed daily by a cron (convex/crons.ts → discoverCache.refreshAll). The
+  // /api/discover route reads this first and only falls back to a live OL fetch when a
+  // subject isn't cached, so the genre browse carousels never wait on OL at render.
+  // One row per subject; `candidates` is the work-deduped, readinglog-ranked pool.
+  discoveryCache: defineTable({
+    subject: v.string(), // OL subject phrase, lowercased (mirrors lib/genres.ts subjects)
+    candidates: v.array(
+      v.object({
+        workKey: v.string(),
+        title: v.string(),
+        authors: v.array(v.string()),
+        coverId: v.optional(v.number()),
+        firstPublishYear: v.optional(v.number()),
+        subjects: v.optional(v.array(v.string())),
+      }),
+    ),
+    refreshedAt: v.number(),
+  }).index("by_subject", ["subject"]),
 })
