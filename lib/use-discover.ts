@@ -66,12 +66,13 @@ export function useDiscover(subjects: string[]): {
     }
     const ctrl = new AbortController()
     setLoading(true)
-    fetch("/api/discover", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subjects, page }),
-      signal: ctrl.signal,
-    })
+    // GET (not POST) so the response is cacheable at Vercel's edge — repeat
+    // (subject, page) views are served from the CDN, not the slow OL fan-out. One
+    // repeated ?subject= param per subject keeps phrases with punctuation intact.
+    const qs = new URLSearchParams()
+    for (const s of subjects) qs.append("subject", s)
+    qs.set("page", String(page))
+    fetch(`/api/discover?${qs.toString()}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? (r.json() as Promise<{ results?: DiscoveryCandidate[] }>) : null))
       .then((d) => {
         if (!d) return

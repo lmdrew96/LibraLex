@@ -38,6 +38,14 @@ const SEARCH_FIELDS = "key,title,author_name,cover_i,first_publish_year,subject"
 const SUBJECT_CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6h
 const subjectCache = new Map<string, { candidates: DiscoveryCandidate[]; at: number }>()
 
+// Edge cache (Vercel CDN) for healthy responses — the real speed/reliability win: a
+// warm (subject, page) is served from the edge with no function run and no OL call,
+// surviving the cold starts that wipe the module cache above. 6h fresh, then serve
+// stale for another day while revalidating in the background. Empty/failed payloads
+// use no-store so a transient OL dud can't pin an empty row at the edge for hours.
+const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" }
+const NO_CACHE_HEADERS = { "Cache-Control": "no-store" }
+
 export type DiscoveryCandidate = {
   workKey: string
   title: string
@@ -137,27 +145,19 @@ const fetchSubject = async (subject: string, page: number): Promise<DiscoveryCan
   }
 }
 
-export async function POST(request: Request): Promise<NextResponse> {
-  let subjects: string[] = []
-  let page = 0
-  try {
-    const body = (await request.json()) as { subjects?: unknown; page?: unknown }
-    if (Array.isArray(body.subjects)) {
-      subjects = body.subjects.filter((s): s is string => typeof s === "string")
-    }
-    // Clamp the page into a sane window — page 0 is the popular head; deeper pages
-    // backfill dismissals. The ceiling bounds the fan-out of slow OL calls.
-    if (typeof body.page === "number" && Number.isFinite(body.page)) {
-      page = Math.min(Math.max(Math.floor(body.page), 0), 10)
-    }
-  } catch {
-    return NextResponse.json({ results: [] satisfies DiscoveryCandidate[] })
-  }
+export async function GET(request: Request): Promise<NextResponse> {
+  const params = new URL(request.url).searchParams
+  // Repeated ?subject= params (not a delimited list) so subject phrases keep any
+  // punctuation. page clamps into the same window — page 0 is the popular head;
+  // deeper pages backfill dismissals; the ceiling bounds the OL fan-out.
+  const rawSubjects = params.getAll("subject")
+  const pageRaw = Number(params.get("page") ?? "0")
+  const page = Number.isFinite(pageRaw) ? Math.min(Math.max(Math.floor(pageRaw), 0), 10) : 0
 
   // Dedupe (case-insensitively) and cap the fan-out, keeping the original text.
   const seen = new Set<string>()
   const wanted: string[] = []
-  for (const s of subjects) {
+  for (const s of rawSubjects) {
     const t = s.trim()
     const k = t.toLowerCase()
     if (t && !seen.has(k)) {
@@ -167,7 +167,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (wanted.length >= MAX_SUBJECTS) break
   }
   if (wanted.length === 0) {
-    return NextResponse.json({ results: [] satisfies DiscoveryCandidate[] })
+    return NextResponse.json(
+      { results: [] satisfies DiscoveryCandidate[] },
+      { headers: NO_CACHE_HEADERS },
+    )
   }
 
   // Fan out across subjects in parallel (each cached); merge, deduping by work key.
@@ -179,5 +182,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
   }
 
-  return NextResponse.json({ results: [...byKey.values()].slice(0, MAX_RESULTS) })
+  const results = [...byKey.values()].slice(0, MAX_RESULTS)
+  // Only edge-cache a healthy, non-empty payload — never pin an empty (a transient OL
+  // failure or a tapped-out deep page) at the CDN for the full window.
+  return NextResponse.json(
+    { results },
+    { headers: results.length > 0 ? CACHE_HEADERS : NO_CACHE_HEADERS },
+  )
 }
