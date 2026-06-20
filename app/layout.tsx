@@ -34,13 +34,36 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "LibraLex",
+  metadataBase: new URL("https://libra.adhdesigns.dev"),
+  title: {
+    default: "LibraLex",
+    template: "%s · LibraLex",
+  },
   description: "Your shelf, digitized — catalog what you own, want, and borrow.",
+  applicationName: "LibraLex",
+  appleWebApp: { capable: true, title: "LibraLex", statusBarStyle: "default" },
+  openGraph: {
+    type: "website",
+    siteName: "LibraLex",
+    title: "LibraLex",
+    description: "Your shelf, digitized — catalog what you own, want, and borrow from the library.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "LibraLex",
+    description: "Your shelf, digitized — catalog what you own, want, and borrow from the library.",
+  },
 }
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Mirrors the surface/background tokens in app/globals.css so the mobile
+  // browser chrome matches the active theme.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#edf3f1" },
+    { media: "(prefers-color-scheme: dark)", color: "#161b27" },
+  ],
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
