@@ -15,11 +15,15 @@ import type { BookSearchResult } from "@/lib/types"
 // Runs server-side so no CORS and no key ever reaches the client. Client
 // debounces (~300ms) — we don't debounce here.
 
-// Open Library is slow AND flaky: text search.json runs 5–8s, and its ISBN index
-// is eventually-consistent (a just-valid ISBN often returns [] on the first hit,
-// then resolves on a retry — the "works on the 2nd/3rd try" report). We retry
-// here so the user doesn't have to, and raise the function budget so a slow-but-
-// valid response isn't killed mid-flight (Vercel default ceilings are low).
+// Open Library is slow AND flaky: text search.json runs 5–8s and sometimes times
+// out entirely, and its ISBN index is eventually-consistent (a just-valid ISBN often
+// returns [] on the first hit, then resolves on a retry — the "works on the 2nd/3rd
+// try" report). Tuning OL's timeout alone has been tried twice and search stays
+// spotty, so the text + author paths now FALL BACK to Google Books when OL fails:
+// OL gets one fast attempt, and if it times out/errors, Google Books (fast, and
+// in-quota with GOOGLE_BOOKS_API_KEY set) rescues the query instead of returning a
+// 504. The ISBN index's empty-200 lag still gets its dedicated retry below. The
+// function budget is raised so a slow-but-valid response isn't killed mid-flight.
 export const maxDuration = 30
 
 const OPEN_LIBRARY_FIELDS =
@@ -132,6 +136,58 @@ const fetchGoogleVolumeByIsbn = async (isbn: string): Promise<GoogleVolume | nul
   }
 }
 
+/**
+ * Google Books text search — the fallback when Open Library's text/author search is
+ * slow or flaky. Takes the raw Google `q` value ("nimona", or `inauthor:"…"`), maps
+ * up to 10 volumes to our result shape. No OL cover_i/workKey here, so it carries
+ * Google's thumbnail + ISBN and the add+enrich path fills the rest later. `country`
+ * is required by the Books API in some regions; `printType=books` drops magazines.
+ * Throws on a non-OK response so the caller can fall through to a 504.
+ */
+const fetchGoogleTextSearch = async (googleQuery: string): Promise<BookSearchResult[]> => {
+  const apiKey = process.env.GOOGLE_BOOKS_API_KEY
+  const keyParam = apiKey ? `&key=${apiKey}` : ""
+  const res = await fetchWithTimeout(
+    `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(googleQuery)}&maxResults=10&printType=books&country=US${keyParam}`,
+    GOOGLE_TIMEOUT_MS,
+  )
+  if (!res.ok) throw new Error(`Google Books responded ${res.status}`)
+  const data = (await res.json()) as {
+    items?: Array<{
+      volumeInfo?: {
+        title?: string
+        authors?: string[]
+        publishedDate?: string
+        pageCount?: number
+        imageLinks?: { thumbnail?: string; smallThumbnail?: string }
+        industryIdentifiers?: Array<{ type?: string; identifier?: string }>
+      }
+    }>
+  }
+  return (data.items ?? [])
+    .map((it): BookSearchResult | null => {
+      const info = it.volumeInfo
+      if (!info?.title) return null
+      const ids = info.industryIdentifiers ?? []
+      const isbn =
+        ids.find((i) => i.type === "ISBN_13")?.identifier ??
+        ids.find((i) => i.type === "ISBN_10")?.identifier
+      const links = info.imageLinks
+      const thumb = links?.thumbnail ?? links?.smallThumbnail
+      return {
+        title: info.title,
+        authors: info.authors ?? [],
+        isbn,
+        firstPublishYear: parseYear(info.publishedDate),
+        pageCount:
+          typeof info.pageCount === "number" && info.pageCount > 0 ? info.pageCount : undefined,
+        // Google returns http:// thumbnails — force https to avoid mixed-content blocks.
+        coverUrlFallback: thumb ? thumb.replace(/^http:\/\//, "https://") : undefined,
+      }
+    })
+    .filter((b): b is BookSearchResult => b !== null)
+}
+
 /** Best-effort cover thumbnail from Google Books for a result Open Library has no
  *  cover_i for. iTunes is retired, so Google Books is the only cover fallback. */
 const fetchFallbackCover = async (book: BookSearchResult): Promise<string | null> => {
@@ -198,22 +254,29 @@ export async function GET(request: Request): Promise<NextResponse> {
   // cover-backfill machinery as the text path.
   if (author) {
     const q = `author:"${author.replace(/"/g, "")}"`
-    let results: BookSearchResult[]
+    // One fast OL attempt (work-grouped, readinglog-sorted); a timeout/error or a
+    // flaky empty both fall through to the Google `inauthor:` rescue below.
+    let results: BookSearchResult[] = []
     try {
-      results = await withRetry(
-        () =>
-          fetchOpenLibrary(
-            `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&sort=readinglog&limit=24&fields=${OPEN_LIBRARY_FIELDS}`,
-            OL_TEXT_TIMEOUT_MS,
-          ),
-        { attempts: 2, backoffMs: 400 },
+      results = await fetchOpenLibrary(
+        `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&sort=readinglog&limit=24&fields=${OPEN_LIBRARY_FIELDS}`,
+        OL_TEXT_TIMEOUT_MS,
       )
     } catch {
-      return NextResponse.json(
-        { results: [], error: "Couldn't load this author's books. Try again." },
-        { status: 504 },
-      )
+      // swallow — empty `results` triggers the Google fallback next
     }
+
+    if (results.length === 0) {
+      try {
+        return NextResponse.json({ results: await fetchGoogleTextSearch(`inauthor:"${author}"`) })
+      } catch {
+        return NextResponse.json(
+          { results: [], error: "Couldn't load this author's books. Try again." },
+          { status: 504 },
+        )
+      }
+    }
+
     await backfillCovers(results)
     return NextResponse.json({ results })
   }
@@ -273,21 +336,33 @@ export async function GET(request: Request): Promise<NextResponse> {
   if (query.length < 2) {
     return NextResponse.json({ results: [] satisfies BookSearchResult[] })
   }
-  let results: BookSearchResult[]
+  // One fast OL attempt; both its failure modes — a timeout/error AND a flaky
+  // empty-200 (the lagging-index "works on the 2nd try") — leave `results` empty and
+  // fall through to the Google Books rescue below.
+  let results: BookSearchResult[] = []
   try {
-    // Retry on error only — an empty text result is a legitimate "no matches",
-    // not a transient failure, so we don't want to slow that path down.
-    results = await withRetry(
-      () =>
-        fetchOpenLibrary(
-          `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10&fields=${OPEN_LIBRARY_FIELDS}`,
-          OL_TEXT_TIMEOUT_MS,
-        ),
-      { attempts: 2, backoffMs: 400 },
+    results = await fetchOpenLibrary(
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10&fields=${OPEN_LIBRARY_FIELDS}`,
+      OL_TEXT_TIMEOUT_MS,
     )
   } catch {
-    return NextResponse.json({ results: [], error: "Search timed out. Try again." }, { status: 504 })
+    // swallow — the empty `results` triggers the Google fallback next
   }
+
+  if (results.length === 0) {
+    // OL was slow, errored, or returned a flaky empty — give Google a shot before
+    // declaring "no matches". A real no-match returns Google-empty too; a genuine OL
+    // outage is rescued. Google results carry their own thumbnail, so no cover backfill.
+    try {
+      return NextResponse.json({ results: await fetchGoogleTextSearch(query) })
+    } catch {
+      return NextResponse.json(
+        { results: [], error: "Search timed out. Try again." },
+        { status: 504 },
+      )
+    }
+  }
+
   await backfillCovers(results)
   return NextResponse.json({ results })
 }
