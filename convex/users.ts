@@ -129,6 +129,22 @@ export const ensureProfile = mutation({
   },
 })
 
+// Save the caller's favorite genres (genre ids from lib/genres.ts). The profile is
+// upserted on every authenticated load (see ensureProfile via AppShell), so it
+// reliably exists by the time Settings renders; we still guard for the rare race.
+// Deduped and capped so a malformed client can't bloat the row.
+export const setFavoriteGenres = mutation({
+  args: { genres: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx)
+    const existing = await profileFor(ctx, userId)
+    if (!existing) throw new Error("Profile isn't ready yet — reload and try again.")
+    const genres = [...new Set(args.genres.map((g) => g.trim()).filter(Boolean))].slice(0, 24)
+    await ctx.db.patch(existing._id, { favoriteGenres: genres })
+    return genres
+  },
+})
+
 // Normalize user-entered codes: trim, uppercase, accept with/without the
 // "SHELF-" prefix, drop stray whitespace. Returns "" if it can't form a code body.
 export const normalizeCode = (raw: string): string => {

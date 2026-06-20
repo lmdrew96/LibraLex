@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import type { BookInfo as BookInfoData } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -67,7 +68,12 @@ export function BookInfo({
           <div className="flex flex-col gap-4">
             {authorsWithBios.map((a) => (
               <div key={a.name}>
-                <p className="mb-1 font-medium text-ink">{a.name}</p>
+                <Link
+                  href={`/author/${encodeURIComponent(a.name)}`}
+                  className="mb-1 inline-block font-medium text-ink underline-offset-2 hover:text-teal hover:underline"
+                >
+                  {a.name}
+                </Link>
                 <Expandable text={a.bio!} clamp="line-clamp-4" />
               </div>
             ))}

@@ -87,6 +87,11 @@ export default defineSchema({
     // the human-friendly friendCode, this carries real entropy — it grants read
     // access to the shelf. Indexed so the MCP can resolve token → userId in O(1).
     mcpToken: v.optional(v.string()),
+    // Genre ids the user picked in Settings (see lib/genres.ts) — drives the
+    // "Popular in <genre>" browse rows on the Search page. Stored as our stable
+    // genre ids, not raw Open Library subjects, so the curated list can evolve
+    // without rewriting saved preferences. Absent/empty falls back to a default set.
+    favoriteGenres: v.optional(v.array(v.string())),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])

@@ -238,7 +238,21 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
 
         <div className="min-w-0 flex-1">
           <h1 className="text-3xl font-semibold">{book.title}</h1>
-          <p className="mt-1 text-lg text-teal">{book.authors.join(", ") || "Unknown author"}</p>
+          <p className="mt-1 text-lg text-teal">
+            {book.authors.length > 0
+              ? book.authors.map((a, i) => (
+                  <span key={`${a}-${i}`}>
+                    {i > 0 && ", "}
+                    <Link
+                      href={`/author/${encodeURIComponent(a)}`}
+                      className="underline-offset-2 hover:text-ink hover:underline"
+                    >
+                      {a}
+                    </Link>
+                  </span>
+                ))
+              : "Unknown author"}
+          </p>
 
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-teal">
             {book.firstPublishYear && <span>{book.firstPublishYear}</span>}

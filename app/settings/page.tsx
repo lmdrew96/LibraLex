@@ -3,8 +3,10 @@
 import { useState } from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
-import { Bot, Copy, History, Loader2, Palette, RefreshCw, ShieldAlert, Trash2 } from "lucide-react"
+import { Bot, Copy, History, Loader2, Palette, RefreshCw, ShieldAlert, Tags, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import { GENRES } from "@/lib/genres"
+import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -15,8 +17,28 @@ export default function SettingsPage() {
   const generate = useAction(api.mcpAuth.generateMcpToken)
   const revoke = useMutation(api.mcpAuth.revokeMcpToken)
   const undateReadBooks = useMutation(api.books.undateReadBooks)
+  const profile = useQuery(api.users.getMyProfile)
+  const setFavoriteGenres = useMutation(api.users.setFavoriteGenres)
   const [busy, setBusy] = useState(false)
   const [undating, setUndating] = useState(false)
+  // Optimistic genre selection so chips toggle instantly; falls back to the live
+  // profile value until the first edit, and reverts on a failed save.
+  const [genreDraft, setGenreDraft] = useState<string[] | null>(null)
+  const selectedGenres = genreDraft ?? profile?.favoriteGenres ?? []
+
+  const toggleGenre = async (id: string) => {
+    const next = selectedGenres.includes(id)
+      ? selectedGenres.filter((g) => g !== id)
+      : [...selectedGenres, id]
+    const prev = selectedGenres
+    setGenreDraft(next)
+    try {
+      await setFavoriteGenres({ genres: next })
+    } catch {
+      setGenreDraft(prev)
+      toast.error("Couldn't save your genres.")
+    }
+  }
 
   // Build the link from the app's own origin (libra.adhdesigns.dev in prod). A
   // Next rewrite proxies /mcp/* to the Convex HTTP-actions endpoint, so the URL we
@@ -103,6 +125,47 @@ export default function SettingsPage() {
           Choose a theme. “System” follows your device’s light or dark setting automatically.
         </p>
         <ThemeToggle />
+      </section>
+
+      <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
+        <div className="mb-1 flex items-center gap-2">
+          <Tags className="h-5 w-5 text-teal" />
+          <h2 className="text-sm font-semibold text-teal">Favorite genres</h2>
+        </div>
+        <p className="mb-4 max-w-prose text-sm text-teal/90">
+          Pick the genres you read most. The Search page shows popular books in each
+          one — and skips ones you don’t choose. Leave them all off to see a default
+          mix.
+        </p>
+        {profile === undefined ? (
+          <div className="flex flex-wrap gap-2">
+            {[...Array(8)].map((_, i) => (
+              <Skeleton key={i} className="h-9 w-24 rounded-full" />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {GENRES.map((g) => {
+              const on = selectedGenres.includes(g.id)
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => toggleGenre(g.id)}
+                  aria-pressed={on}
+                  className={cn(
+                    "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40",
+                    on
+                      ? "border-teal bg-teal text-surface"
+                      : "border-lavender bg-card text-ink/80 hover:bg-lavender/50",
+                  )}
+                >
+                  {g.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </section>
 
       <section className="rounded-[24px] border border-lavender bg-card p-5">

@@ -189,6 +189,34 @@ export async function GET(request: Request): Promise<NextResponse> {
   const params = new URL(request.url).searchParams
   const isbn = (params.get("isbn") ?? "").replace(/[^0-9Xx]/g, "")
   const query = params.get("q")?.trim() ?? ""
+  const author = params.get("author")?.trim() ?? ""
+
+  // ── Author path: one author's catalog, popular works first ────────────────────
+  // Powers the /author/[name] page ("see more of their work"). Matches the author
+  // field as a quoted phrase so multi-word names resolve, and sorts by readinglog so
+  // the author's best-known titles lead instead of obscure reprints. Same retry +
+  // cover-backfill machinery as the text path.
+  if (author) {
+    const q = `author:"${author.replace(/"/g, "")}"`
+    let results: BookSearchResult[]
+    try {
+      results = await withRetry(
+        () =>
+          fetchOpenLibrary(
+            `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&sort=readinglog&limit=24&fields=${OPEN_LIBRARY_FIELDS}`,
+            OL_TEXT_TIMEOUT_MS,
+          ),
+        { attempts: 2, backoffMs: 400 },
+      )
+    } catch {
+      return NextResponse.json(
+        { results: [], error: "Couldn't load this author's books. Try again." },
+        { status: 504 },
+      )
+    }
+    await backfillCovers(results)
+    return NextResponse.json({ results })
+  }
 
   // ── Barcode path: Google Books (ISBN-exact) biblio + Open Library cover ───────
   if (isbn) {
