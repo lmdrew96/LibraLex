@@ -3,10 +3,21 @@
 import { useState } from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
-import { Bot, Copy, History, Loader2, Palette, RefreshCw, ShieldAlert, Tags, Trash2 } from "lucide-react"
+import { Bot, Copy, Eye, History, Loader2, Palette, RefreshCw, ShieldAlert, Tags, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { GENRES } from "@/lib/genres"
+import type { Ownership } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+// The four ownership shelves a friend can browse — drives the "What friends can
+// see" toggles. Keys mirror the server union (convex/users.SHELF_VALUES); labels
+// are friendlier than OWNERSHIP_LABELS for this "what others see" framing.
+const FRIEND_SHELVES: { key: Ownership; label: string }[] = [
+  { key: "owned", label: "Owned" },
+  { key: "wishlist", label: "Wishlist" },
+  { key: "library", label: "Library loans" },
+  { key: "none", label: "Read, not owned" },
+]
 import { AppShell } from "@/components/app-shell"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -20,6 +31,7 @@ export default function SettingsPage() {
   const undateReadBooks = useMutation(api.books.undateReadBooks)
   const profile = useQuery(api.users.getMyProfile)
   const setFavoriteGenres = useMutation(api.users.setFavoriteGenres)
+  const setHiddenShelves = useMutation(api.users.setHiddenShelves)
   const { confirm, confirmDialog } = useConfirm()
   const [busy, setBusy] = useState(false)
   const [undating, setUndating] = useState(false)
@@ -27,6 +39,10 @@ export default function SettingsPage() {
   // profile value until the first edit, and reverts on a failed save.
   const [genreDraft, setGenreDraft] = useState<string[] | null>(null)
   const selectedGenres = genreDraft ?? profile?.favoriteGenres ?? []
+  // Same optimistic pattern for shelf visibility: store the HIDDEN shelves, fall
+  // back to the live profile until first edit, revert on a failed save.
+  const [hiddenDraft, setHiddenDraft] = useState<Ownership[] | null>(null)
+  const hiddenShelves = hiddenDraft ?? profile?.hiddenShelves ?? []
 
   const toggleGenre = async (id: string) => {
     const next = selectedGenres.includes(id)
@@ -39,6 +55,20 @@ export default function SettingsPage() {
     } catch {
       setGenreDraft(prev)
       toast.error("Couldn't save your genres.")
+    }
+  }
+
+  const toggleShelf = async (shelf: Ownership) => {
+    const next = hiddenShelves.includes(shelf)
+      ? hiddenShelves.filter((s) => s !== shelf)
+      : [...hiddenShelves, shelf]
+    const prev = hiddenShelves
+    setHiddenDraft(next)
+    try {
+      await setHiddenShelves({ shelves: next })
+    } catch {
+      setHiddenDraft(prev)
+      toast.error("Couldn't save your visibility settings.")
     }
   }
 
@@ -177,7 +207,48 @@ export default function SettingsPage() {
         )}
       </section>
 
-      <section className="rounded-[24px] border border-lavender bg-card p-5">
+      <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
+        <div className="mb-1 flex items-center gap-2">
+          <Eye className="h-5 w-5 text-teal" />
+          <h2 className="text-sm font-semibold text-teal">What friends can see</h2>
+        </div>
+        <p className="mb-4 max-w-prose text-sm text-teal/90">
+          Friends can browse your shelves from your profile. Everything is visible by
+          default — turn a shelf off to keep it private. Your library due dates are
+          always hidden either way.
+        </p>
+        {profile === undefined ? (
+          <div className="flex flex-wrap gap-2">
+            {FRIEND_SHELVES.map((s) => (
+              <Skeleton key={s.key} className="h-9 w-28 rounded-full" />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Choose which shelves friends can see">
+            {FRIEND_SHELVES.map(({ key, label }) => {
+              const visible = !hiddenShelves.includes(key)
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleShelf(key)}
+                  aria-pressed={visible}
+                  className={cn(
+                    "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40",
+                    visible
+                      ? "border-teal bg-teal text-surface"
+                      : "border-lavender bg-card text-ink/80 hover:bg-lavender/50",
+                  )}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
         <div className="mb-1 flex items-center gap-2">
           <Bot className="h-5 w-5 text-teal" />
           <h2 className="text-sm font-semibold text-teal">Connect to Claude (MCP)</h2>
@@ -226,7 +297,7 @@ export default function SettingsPage() {
         )}
       </section>
 
-      <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
+      <section className="rounded-[24px] border border-lavender bg-card p-5">
         <div className="mb-1 flex items-center gap-2">
           <History className="h-5 w-5 text-teal" />
           <h2 className="text-sm font-semibold text-teal">Reading history</h2>

@@ -92,6 +92,20 @@ export default defineSchema({
     // genre ids, not raw Open Library subjects, so the curated list can evolve
     // without rewriting saved preferences. Absent/empty falls back to a default set.
     favoriteGenres: v.optional(v.array(v.string())),
+    // Ownership shelves the user has hidden from friends (see convex/shelf,
+    // discover, mcpData — every friend-facing read filters these out). Absent/empty
+    // = everything visible, which is the default and the pre-toggle behavior. Loan
+    // due dates are always stripped regardless; this controls whole-shelf visibility.
+    hiddenShelves: v.optional(
+      v.array(
+        v.union(
+          v.literal("owned"),
+          v.literal("wishlist"),
+          v.literal("library"),
+          v.literal("none"),
+        ),
+      ),
+    ),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])

@@ -3,7 +3,7 @@ import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { getUserId } from "./util"
 import { areFriends } from "./friends"
-import { toPublicProfile } from "./users"
+import { hiddenShelfSet, toPublicProfile } from "./users"
 
 // A friend-visible book: the bibliographic fields plus the social signal
 // (rating + review + where it lives), with library loan logistics deliberately
@@ -63,10 +63,14 @@ export const getFriendShelf = query({
     if (profile.userId === me) return null // use your own shelf views
     if (!(await areFriends(ctx, me, profile.userId))) return null
 
-    const books = await ctx.db
-      .query("books")
-      .withIndex("by_user", (q) => q.eq("userId", profile.userId))
-      .collect()
+    // Drop any shelf the owner has hidden from friends before anything else sees it.
+    const hidden = hiddenShelfSet(profile)
+    const books = (
+      await ctx.db
+        .query("books")
+        .withIndex("by_user", (q) => q.eq("userId", profile.userId))
+        .collect()
+    ).filter((b) => !hidden.has(b.ownership))
 
     return {
       profile: toPublicProfile(profile),

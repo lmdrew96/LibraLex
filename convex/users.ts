@@ -51,6 +51,18 @@ export const profileFor = async (
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .unique()
 
+// The four ownership shelves a friend can see. The single source of truth for the
+// per-shelf privacy toggle (validator below + Settings UI label set).
+export const SHELF_VALUES = ["owned", "wishlist", "library", "none"] as const
+export type Shelf = (typeof SHELF_VALUES)[number]
+const shelfValidator = v.union(...SHELF_VALUES.map((s) => v.literal(s)))
+
+/** The ownership shelves this profile keeps private, as a fast-lookup set. Absent
+ *  field → empty set → everything visible. Every friend-facing read filters with
+ *  this so the toggle is honored uniformly (shelf page, in-app picks, MCP recs). */
+export const hiddenShelfSet = (p: Doc<"users"> | null): Set<Shelf> =>
+  new Set((p?.hiddenShelves ?? []) as Shelf[])
+
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // The caller's own profile (incl. their shareable friend code). Null until
@@ -142,6 +154,22 @@ export const setFavoriteGenres = mutation({
     const genres = [...new Set(args.genres.map((g) => g.trim()).filter(Boolean))].slice(0, 24)
     await ctx.db.patch(existing._id, { favoriteGenres: genres })
     return genres
+  },
+})
+
+// Save which ownership shelves are hidden from friends. The validator constrains
+// values to the four real shelves, so a malformed client can't store junk; an
+// empty array means "show everything" (the default). Honored by getFriendShelf,
+// discover.friendCandidates, and the MCP recommender.
+export const setHiddenShelves = mutation({
+  args: { shelves: v.array(shelfValidator) },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx)
+    const existing = await profileFor(ctx, userId)
+    if (!existing) throw new Error("Profile isn't ready yet — reload and try again.")
+    const shelves = [...new Set(args.shelves)]
+    await ctx.db.patch(existing._id, { hiddenShelves: shelves })
+    return shelves
   },
 })
 

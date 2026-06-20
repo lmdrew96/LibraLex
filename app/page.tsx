@@ -61,13 +61,15 @@ export default function ShelfPage() {
           {allBooks && allBooks.length > 0 && <ReadNext books={allBooks} />}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Filter shelf by reading status">
               {FILTERS.map(({ key, label }) => (
                 <button
                   key={key}
+                  type="button"
                   onClick={() => setFilter(key)}
+                  aria-pressed={filter === key}
                   className={cn(
-                    "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                    "rounded-full px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40",
                     filter === key
                       ? "bg-ink text-surface"
                       : "bg-lavender/50 text-ink hover:bg-lavender",

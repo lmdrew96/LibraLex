@@ -9,7 +9,7 @@ import {
   isVouchworthy,
   tasteRatingWeight,
 } from "./discover"
-import { profileFor, toPublicProfile } from "./users"
+import { hiddenShelfSet, profileFor, toPublicProfile } from "./users"
 import { areFriends } from "./friends"
 import { LOAN_PERIOD_MS } from "./util"
 
@@ -654,11 +654,13 @@ export const recommendInputsForUser = internalQuery({
       const profile = await profileFor(ctx, friendId)
       if (!profile) continue
       const displayName = toPublicProfile(profile).displayName
+      const hidden = hiddenShelfSet(profile)
       const books = await ctx.db
         .query("books")
         .withIndex("by_user", (q) => q.eq("userId", friendId))
         .collect()
       for (const b of books) {
+        if (hidden.has(b.ownership)) continue // owner keeps this shelf private
         if (!isVouchworthy(b)) continue
         const key = dedupeKey(b)
         if (onShelf.has(key) || dismissedKeys.has(key)) continue

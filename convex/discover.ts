@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { getUserId, requireUserId } from "./util"
-import { profileFor, toPublicProfile, type PublicProfile } from "./users"
+import { hiddenShelfSet, profileFor, toPublicProfile, type PublicProfile } from "./users"
 
 // Cross-shelf recommendation candidates (the "friends" source, Phase 1). Returns
 // books that live on an accepted friend's shelf but NOT on yours, each tagged with
@@ -135,12 +135,14 @@ export const friendCandidates = query({
       const profile = await profileFor(ctx, friendId)
       if (!profile) continue
       const endorser = toPublicProfile(profile)
+      const hidden = hiddenShelfSet(profile)
       const books = await ctx.db
         .query("books")
         .withIndex("by_user", (q) => q.eq("userId", friendId))
         .collect()
 
       for (const b of books) {
+        if (hidden.has(b.ownership)) continue // owner keeps this shelf private
         if (!isVouchworthy(b)) continue
         const key = dedupeKey(b)
         if (mineKeys.has(key)) continue
