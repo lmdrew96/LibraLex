@@ -2,6 +2,9 @@ import { internalMutation, internalQuery } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { normalizeAuthors, sanitizeYear } from "./normalize"
+import { dedupeKey, isVouchworthy } from "./discover"
+import { profileFor, toPublicProfile } from "./users"
+import { areFriends } from "./friends"
 
 // Data layer for the MCP door (convex/http.ts). Every function here is INTERNAL —
 // callable only from other Convex functions, never the public internet. The sole
@@ -339,5 +342,315 @@ export const renewLoanForUser = internalMutation({
 
     await ctx.db.patch(match.book._id, { dueDate: args.newDueDate, returned: false })
     return { status: "renewed" as const, title: match.book.title, dueDate: args.newDueDate }
+  },
+})
+
+// ── Reading stats (chat: "how's my reading year going?") ──────────────────────
+// Pure aggregation over the user's shelf. The door passes startOfYear (the user's
+// local Jan 1, in ms) so "this year" counts on their calendar, not UTC's.
+export const readingStatsForUser = internalQuery({
+  args: { userId: v.string(), startOfYear: v.number() },
+  handler: async (ctx, { userId, startOfYear }) => {
+    const books = await ctx.db
+      .query("books")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect()
+
+    const read = books.filter((b) => b.readStatus === "read")
+    const finishedThisYear = read.filter(
+      (b) => b.finishedAt !== undefined && b.finishedAt >= startOfYear,
+    )
+    const sumPages = (rows: Doc<"books">[]): number =>
+      rows.reduce((s, b) => s + (typeof b.pageCount === "number" ? b.pageCount : 0), 0)
+
+    const ratings = books
+      .map((b) => b.rating)
+      .filter((r): r is number => typeof r === "number")
+    const ratingDistribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+    for (const r of ratings) {
+      const k = Math.round(r)
+      if (k >= 1 && k <= 5) ratingDistribution[k] += 1
+    }
+    const averageRating = ratings.length
+      ? Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10
+      : null
+
+    return {
+      booksRead: read.length,
+      booksReadThisYear: finishedThisYear.length,
+      currentlyReading: books.filter((b) => b.readStatus === "reading").length,
+      toRead: books.filter((b) => b.readStatus === "unread").length,
+      pagesReadThisYear: sumPages(finishedThisYear),
+      pagesReadAllTime: sumPages(read),
+      averageRating,
+      ratedCount: ratings.length,
+      ratingDistribution,
+      shelf: {
+        owned: books.filter((b) => b.ownership === "owned").length,
+        wishlist: books.filter((b) => b.ownership === "wishlist").length,
+        activeLoans: books.filter((b) => b.ownership === "library" && b.returned !== true)
+          .length,
+        total: books.length,
+      },
+    }
+  },
+})
+
+// ── Recommendation inbox (chat: "did anyone rec me a book?") ──────────────────
+// Compact view of recs sent TO the user, newest first, each with the sender's
+// display name. Read-only: to act on one, chat calls add_book with the title.
+export const inboxForUser = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    const recs = (
+      await ctx.db
+        .query("recommendations")
+        .withIndex("by_recipient", (q) => q.eq("toUserId", userId))
+        .collect()
+    ).sort((a, b) => b.createdAt - a.createdAt)
+
+    return await Promise.all(
+      recs.map(async (rec) => {
+        const sender = await profileFor(ctx, rec.fromUserId)
+        return {
+          title: rec.title,
+          authors: rec.authors,
+          from: sender?.displayName ?? "A friend",
+          message: rec.message,
+          status: rec.status,
+          firstPublishYear: rec.firstPublishYear,
+        }
+      }),
+    )
+  },
+})
+
+// The user's accepted friends as { userId, displayName } — the door matches a
+// chat-supplied name against these to resolve a recommendation recipient.
+export const friendsForUser = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    const asRequester = await ctx.db
+      .query("friendships")
+      .withIndex("by_requester", (q) => q.eq("requesterId", userId))
+      .collect()
+    const asAddressee = await ctx.db
+      .query("friendships")
+      .withIndex("by_addressee", (q) => q.eq("addresseeId", userId))
+      .collect()
+    const accepted = [...asRequester, ...asAddressee].filter((f) => f.status === "accepted")
+    const friends = await Promise.all(
+      accepted.map(async (f) => {
+        const otherId = f.requesterId === userId ? f.addresseeId : f.requesterId
+        const profile = await profileFor(ctx, otherId)
+        return profile ? { userId: otherId, displayName: profile.displayName } : null
+      }),
+    )
+    return friends.filter((f): f is NonNullable<typeof f> => f !== null)
+  },
+})
+
+// Best-effort snapshot of the sender's own copy of a book, to carry into a rec
+// (preserves their cover/biblio). Null when they don't have it — the door then
+// enriches from Open Library instead. First title match wins (snapshot quality,
+// not a destructive action, so we don't insist on a unique hit).
+export const findBookSnapshotForUser = internalQuery({
+  args: { userId: v.string(), title: v.string(), author: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("books")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect()
+    const b = matchBooksByTitle(rows, args.title, args.author)[0]
+    if (!b) return null
+    return {
+      title: b.title,
+      authors: b.authors,
+      isbn: b.isbn,
+      coverId: b.coverId,
+      coverUrlFallback: b.coverUrlFallback,
+      coverStorageId: b.coverStorageId,
+      workKey: b.workKey,
+      firstPublishYear: b.firstPublishYear,
+      pageCount: b.pageCount,
+    }
+  },
+})
+
+// Send a recommendation to a friend. Re-checks the friendship server-side (the
+// door resolved the recipient by name, but the gate lives here). Mirrors
+// recs.sendRec, carrying a self-contained snapshot so the rec outlives the
+// sender's copy.
+export const sendRecForUser = internalMutation({
+  args: {
+    userId: v.string(),
+    toUserId: v.string(),
+    title: v.string(),
+    authors: v.array(v.string()),
+    isbn: v.optional(v.string()),
+    coverId: v.optional(v.number()),
+    coverUrlFallback: v.optional(v.string()),
+    coverStorageId: v.optional(v.id("_storage")),
+    workKey: v.optional(v.string()),
+    firstPublishYear: v.optional(v.number()),
+    pageCount: v.optional(v.number()),
+    message: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (args.toUserId === args.userId) {
+      return { status: "error" as const, message: "You can't recommend a book to yourself." }
+    }
+    if (!(await areFriends(ctx, args.userId, args.toUserId))) {
+      return { status: "error" as const, message: "You can only recommend books to friends." }
+    }
+    const message = args.message?.trim()
+    await ctx.db.insert("recommendations", {
+      fromUserId: args.userId,
+      toUserId: args.toUserId,
+      title: args.title,
+      authors: normalizeAuthors(args.authors),
+      isbn: args.isbn,
+      coverId: args.coverId,
+      coverUrlFallback: args.coverUrlFallback,
+      coverStorageId: args.coverStorageId,
+      workKey: args.workKey,
+      firstPublishYear: sanitizeYear(args.firstPublishYear),
+      pageCount: args.pageCount,
+      message: message ? message : undefined,
+      status: "unread",
+      createdAt: Date.now(),
+    })
+    return { status: "sent" as const }
+  },
+})
+
+// ── Recommender inputs (chat: "what should I read next?") ─────────────────────
+// Assembles everything the door needs to recommend: friend-vouched candidates
+// (mirrors discover.friendCandidates — same identity + vouch rules, minus the
+// client-side cover-URL resolution), the user's top taste subjects (for the
+// catalog fallback when friends are sparse), and the shelf + dismissed key sets
+// the door filters catalog hits against.
+type RecEndorsement = {
+  displayName: string
+  rating?: number
+  readStatus: Doc<"books">["readStatus"]
+  review?: string
+}
+type RecPick = {
+  dedupeKey: string
+  title: string
+  authors: string[]
+  isbn?: string
+  coverId?: number
+  coverUrlFallback?: string
+  workKey?: string
+  firstPublishYear?: number
+  pageCount?: number
+  subjects?: string[]
+  endorsers: RecEndorsement[]
+}
+
+const endorsementStrength = (e: RecEndorsement): number =>
+  (e.rating ?? 0) * 2 + (e.readStatus === "read" ? 2 : e.readStatus === "reading" ? 1 : 0)
+
+export const recommendInputsForUser = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    const asRequester = await ctx.db
+      .query("friendships")
+      .withIndex("by_requester", (q) => q.eq("requesterId", userId))
+      .collect()
+    const asAddressee = await ctx.db
+      .query("friendships")
+      .withIndex("by_addressee", (q) => q.eq("addresseeId", userId))
+      .collect()
+    const friendIds = [...asRequester, ...asAddressee]
+      .filter((f) => f.status === "accepted")
+      .map((f) => (f.requesterId === userId ? f.addresseeId : f.requesterId))
+
+    const mine = await ctx.db
+      .query("books")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect()
+    const onShelf = new Set(mine.map(dedupeKey))
+
+    // Taste subjects — rating-weighted frequency over read/reading books. Mirrors
+    // lib/recommend.topTasteSubjects so the chat recs seed from the same signal as
+    // the in-app Discover row.
+    const tally = new Map<string, number>()
+    for (const b of mine) {
+      if (b.readStatus !== "read" && b.readStatus !== "reading") continue
+      const weight = 1 + ((b.rating ?? 3) - 3) * 0.5
+      for (const s of b.subjects ?? []) {
+        const v2 = s.trim()
+        if (v2) tally.set(v2, (tally.get(v2) ?? 0) + weight)
+      }
+    }
+    const tasteSubjects = [...tally.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([s]) => s)
+
+    const dismissed = await ctx.db
+      .query("dismissedBooks")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect()
+    const dismissedKeys = new Set(dismissed.map((d) => d.key))
+
+    const byKey = new Map<string, RecPick>()
+    for (const friendId of friendIds) {
+      const profile = await profileFor(ctx, friendId)
+      if (!profile) continue
+      const displayName = toPublicProfile(profile).displayName
+      const books = await ctx.db
+        .query("books")
+        .withIndex("by_user", (q) => q.eq("userId", friendId))
+        .collect()
+      for (const b of books) {
+        if (!isVouchworthy(b)) continue
+        const key = dedupeKey(b)
+        if (onShelf.has(key) || dismissedKeys.has(key)) continue
+        const endorsement: RecEndorsement = {
+          displayName,
+          rating: b.rating,
+          readStatus: b.readStatus,
+          review: b.review?.trim() || undefined,
+        }
+        const existing = byKey.get(key)
+        if (existing) {
+          existing.endorsers.push(endorsement)
+          existing.coverId ??= b.coverId
+          existing.firstPublishYear ??= b.firstPublishYear
+          existing.pageCount ??= b.pageCount
+          if (!existing.subjects?.length && b.subjects?.length) existing.subjects = b.subjects
+          continue
+        }
+        byKey.set(key, {
+          dedupeKey: key,
+          title: b.title,
+          authors: b.authors,
+          isbn: b.isbn,
+          coverId: b.coverId,
+          coverUrlFallback: b.coverUrlFallback,
+          workKey: b.workKey,
+          firstPublishYear: b.firstPublishYear,
+          pageCount: b.pageCount,
+          subjects: b.subjects,
+          endorsers: [endorsement],
+        })
+      }
+    }
+    const friendPicks = [...byKey.values()].sort(
+      (a, b) =>
+        Math.max(...b.endorsers.map(endorsementStrength)) -
+        Math.max(...a.endorsers.map(endorsementStrength)),
+    )
+
+    return {
+      friendPicks,
+      tasteSubjects,
+      onShelfKeys: [...onShelf],
+      dismissedKeys: [...dismissedKeys],
+    }
   },
 })

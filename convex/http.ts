@@ -176,6 +176,57 @@ const TOOLS = [
       required: ["title"],
     },
   },
+  {
+    name: "search_books",
+    description:
+      "Search the global book catalog (Open Library) by title/author/keyword — NOT the user's shelf. Use to find a book, confirm an exact title/author, or disambiguate before add_book. Returns up to ~8 matches with title, authors, year, pages, isbn.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Title, author, or keywords to search for." },
+        limit: { type: "number", description: "Max results, 1–10. Defaults to 8." },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "recommend_books",
+    description:
+      "Suggest what the user should read next. Prefers books their friends have vouched for (rated/read), then fills from the catalog using the user's taste (the subjects they read most). Excludes books already on their shelf or marked 'not interested'. Each pick carries a short reason. Answers 'what should I read next?'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "How many to suggest, 1–20. Defaults to 8." },
+      },
+    },
+  },
+  {
+    name: "recommendation_inbox",
+    description:
+      "Books friends have recommended to the user, newest first — each with who sent it and any note. Answers 'did anyone recommend me a book?'. To add one, call add_book with the title.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "send_recommendation",
+    description:
+      "Recommend a book to one of the user's friends, identified by their name. Use for 'recommend Dune to Maya', 'tell Sam to read X'. Only works for accepted friends.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Book title to recommend." },
+        to: { type: "string", description: "The friend's name (as it appears in their friend list)." },
+        author: { type: "string", description: "Author, to pick the right book." },
+        message: { type: "string", description: "Optional note to send with the recommendation." },
+      },
+      required: ["title", "to"],
+    },
+  },
+  {
+    name: "reading_stats",
+    description:
+      "The user's reading stats: books read all-time and this year, pages read, currently-reading and to-read counts, average rating + rating distribution, and shelf totals (owned/wishlist/active loans). Answers 'how's my reading year going?', 'how many books have I read?'.",
+    inputSchema: { type: "object", properties: {} },
+  },
 ] as const
 
 /** Pull the token out of the path: /mcp/<token> (query stripped, trailing / trimmed). */
@@ -292,6 +343,151 @@ async function lookupBook(title: string, author?: string): Promise<EnrichedBook 
   } finally {
     clearTimeout(timer)
   }
+}
+
+// ── Catalog search (search_books + recommend_books fallback) ─────────────────
+// A richer cousin of lookupBook: many results, carries subjects for the recommender.
+const OL_SEARCH_FIELDS =
+  "key,title,author_name,isbn,cover_i,first_publish_year,number_of_pages_median,subject"
+
+type OLSearchDoc = {
+  key?: string
+  title?: string
+  author_name?: string[]
+  isbn?: string[]
+  cover_i?: number
+  first_publish_year?: number
+  number_of_pages_median?: number
+  subject?: string[]
+}
+
+type CatalogResult = {
+  title: string
+  authors: string[]
+  isbn?: string
+  coverId?: number
+  firstPublishYear?: number
+  pageCount?: number
+  workKey?: string
+  subjects?: string[]
+}
+
+const mapSearchDoc = (d: OLSearchDoc): CatalogResult | null => {
+  if (!d.title) return null
+  return {
+    title: d.title,
+    authors: d.author_name ?? [],
+    isbn: d.isbn?.[0],
+    coverId: typeof d.cover_i === "number" && d.cover_i > 0 ? d.cover_i : undefined,
+    firstPublishYear: d.first_publish_year,
+    pageCount:
+      typeof d.number_of_pages_median === "number" ? d.number_of_pages_median : undefined,
+    workKey: d.key,
+    subjects: d.subject?.slice(0, 12),
+  }
+}
+
+/** Run one Open Library search.json query; [] on any failure (fault-tolerant). */
+async function olSearch(qs: string, timeoutMs = 9000): Promise<CatalogResult[]> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(
+      `https://openlibrary.org/search.json?${qs}&fields=${OL_SEARCH_FIELDS}`,
+      {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "LibraLex-MCP/1.0 (libra.adhdesigns.dev)",
+          Accept: "application/json",
+        },
+      },
+    )
+    if (!res.ok) return []
+    const data = (await res.json()) as { docs?: OLSearchDoc[] }
+    return (data.docs ?? []).map(mapSearchDoc).filter((r): r is CatalogResult => r !== null)
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Cross-shelf identity for a catalog hit — MUST match discover.dedupeKey so we
+ *  can filter against the user's shelf + dismissed keys. */
+const catalogKey = (c: CatalogResult): string => {
+  const work = c.workKey?.trim()
+  if (work) return `w:${work}`
+  const isbn = c.isbn?.replace(/[^0-9Xx]/g, "").toLowerCase()
+  if (isbn) return `i:${isbn}`
+  return `t:${c.title.trim().toLowerCase()}|${(c.authors[0] ?? "").trim().toLowerCase()}`
+}
+
+// Catalog candidates for taste subjects — mirrors /api/discover (readinglog rank,
+// English, 1980+ recency floor) so chat recs match the in-app Discover row.
+async function catalogBySubjects(
+  subjects: string[],
+  need: number,
+  exclude: Set<string>,
+): Promise<CatalogResult[]> {
+  const yearCeil = new Date(Date.now()).getUTCFullYear() + 1
+  const out: CatalogResult[] = []
+  const seen = new Set<string>(exclude)
+  for (const subject of subjects.slice(0, 2)) {
+    if (out.length >= need) break
+    const q = `subject:"${subject.replace(/"/g, "")}" AND language:eng AND first_publish_year:[1980 TO ${yearCeil}]`
+    const cands = await olSearch(`q=${encodeURIComponent(q)}&sort=readinglog&limit=14`)
+    for (const c of cands) {
+      const key = catalogKey(c)
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(c)
+      if (out.length >= need) break
+    }
+  }
+  return out
+}
+
+// ── Friend resolution (send_recommendation) ──────────────────────────────────
+type FriendLite = { userId: string; displayName: string }
+type FriendResolution =
+  | { status: "ok"; userId: string; displayName: string }
+  | { status: "not_found"; to: string; yourFriends: string[] }
+  | { status: "ambiguous"; matches: string[] }
+
+// Resolve a chat-supplied name to one friend: exact (case-insensitive) wins, else
+// substring. 0 → not_found (echo the friend list), >1 → ambiguous (let chat ask).
+const resolveFriend = (friends: FriendLite[], query: string): FriendResolution => {
+  const q = query.trim().toLowerCase()
+  const exact = friends.filter((f) => f.displayName.trim().toLowerCase() === q)
+  const pool = exact.length
+    ? exact
+    : friends.filter((f) => f.displayName.toLowerCase().includes(q))
+  if (pool.length === 0) {
+    return { status: "not_found", to: query, yourFriends: friends.map((f) => f.displayName) }
+  }
+  if (pool.length > 1) return { status: "ambiguous", matches: pool.map((f) => f.displayName) }
+  return { status: "ok", userId: pool[0].userId, displayName: pool[0].displayName }
+}
+
+// Human-readable "why" for a friend-vouched pick: "Maya rated it 5★; Sam is reading it".
+const friendWhy = (
+  endorsers: { displayName: string; rating?: number; readStatus: string }[],
+): string => {
+  const phrase = (e: { displayName: string; rating?: number; readStatus: string }): string => {
+    if (typeof e.rating === "number") return `${e.displayName} rated it ${e.rating}★`
+    if (e.readStatus === "read") return `${e.displayName} read it`
+    if (e.readStatus === "reading") return `${e.displayName} is reading it`
+    return `${e.displayName} has it on their shelf`
+  }
+  const top = endorsers.slice(0, 2).map(phrase).join("; ")
+  return endorsers.length > 2 ? `${top} +${endorsers.length - 2} more` : top
+}
+
+/** Clamp a numeric arg into [min,max], rounding; falls back to dflt when absent/bad. */
+const clampInt = (val: unknown, min: number, max: number, dflt: number): number => {
+  const n = typeof val === "number" ? Math.round(val) : NaN
+  if (!Number.isFinite(n)) return dflt
+  return Math.min(Math.max(n, min), max)
 }
 
 /** Route a tools/call to the matching internal function, scoped to userId. */
@@ -448,6 +644,120 @@ async function dispatch(
         dueDate: civilDate(newDueDate, tz),
         dueInDays: daysUntilDue(newDueDate, now, tz),
       })
+    }
+
+    case "search_books": {
+      const query = typeof args.query === "string" ? args.query.trim() : ""
+      if (query.length < 2) throw new Error("search_books needs a query of at least 2 characters")
+      const limit = clampInt(args.limit, 1, 10, 8)
+      const results = await olSearch(`q=${encodeURIComponent(query)}&limit=${limit}`)
+      return textContent({ count: results.length, results })
+    }
+
+    case "recommend_books": {
+      const limit = clampInt(args.limit, 1, 20, 8)
+      const inputs = await ctx.runQuery(internal.mcpData.recommendInputsForUser, { userId })
+
+      const recommendations: Array<{
+        title: string
+        authors: string[]
+        firstPublishYear?: number
+        source: "friends" | "catalog"
+        why: string
+      }> = []
+
+      for (const p of inputs.friendPicks.slice(0, limit)) {
+        recommendations.push({
+          title: p.title,
+          authors: p.authors,
+          firstPublishYear: p.firstPublishYear,
+          source: "friends",
+          why: friendWhy(p.endorsers),
+        })
+      }
+
+      // Fill from the catalog (taste subjects) when friends didn't supply enough.
+      if (recommendations.length < limit && inputs.tasteSubjects.length > 0) {
+        const exclude = new Set<string>([
+          ...inputs.onShelfKeys,
+          ...inputs.dismissedKeys,
+          ...inputs.friendPicks.map((p) => p.dedupeKey),
+        ])
+        const catalog = await catalogBySubjects(
+          inputs.tasteSubjects,
+          limit - recommendations.length,
+          exclude,
+        )
+        const why = `Matches your taste: ${inputs.tasteSubjects.join(", ")}`
+        for (const c of catalog) {
+          recommendations.push({
+            title: c.title,
+            authors: c.authors,
+            firstPublishYear: c.firstPublishYear,
+            source: "catalog",
+            why,
+          })
+        }
+      }
+
+      return textContent({
+        count: recommendations.length,
+        recommendations,
+        basis: {
+          fromFriends: inputs.friendPicks.length > 0,
+          tasteSubjects: inputs.tasteSubjects,
+        },
+      })
+    }
+
+    case "recommendation_inbox": {
+      const recommendations = await ctx.runQuery(internal.mcpData.inboxForUser, { userId })
+      return textContent({ count: recommendations.length, recommendations })
+    }
+
+    case "send_recommendation": {
+      const title = reqTitle(args, "send_recommendation")
+      const to = optStr(args.to)
+      if (!to) throw new Error("send_recommendation requires `to` (a friend's name)")
+      const author = optStr(args.author)
+      const message = optStr(args.message)
+
+      const friends = await ctx.runQuery(internal.mcpData.friendsForUser, { userId })
+      const recipient = resolveFriend(friends, to)
+      if (recipient.status !== "ok") return textContent(recipient)
+
+      // Prefer the sender's own copy (keeps their cover/biblio); else enrich from OL.
+      const snapshot = await ctx.runQuery(internal.mcpData.findBookSnapshotForUser, {
+        userId,
+        title,
+        author,
+      })
+      const found = snapshot ? null : await lookupBook(title, author)
+      const book = snapshot ?? found ?? { title, authors: author ? [author] : [] }
+
+      const result = await ctx.runMutation(internal.mcpData.sendRecForUser, {
+        userId,
+        toUserId: recipient.userId,
+        ...book,
+        message,
+      })
+      return textContent(
+        result.status === "sent"
+          ? { ok: true, sent: true, to: recipient.displayName, title: book.title }
+          : result,
+      )
+    }
+
+    case "reading_stats": {
+      const tz = await ctx.runQuery(internal.mcpData.timeZoneForUser, { userId })
+      const now = Date.now()
+      const year = Number(civilDate(now, tz).slice(0, 4))
+      const startOfYear = Date.parse(`${year}-01-01T00:00:00Z`)
+      const stats = await ctx.runQuery(internal.mcpData.readingStatsForUser, {
+        userId,
+        startOfYear,
+      })
+      return textContent({ year, ...stats })
     }
 
     default:

@@ -38,7 +38,9 @@ export type FriendCandidate = {
 // Stable identity for a book across shelves: prefer the OL work key, then a
 // normalized ISBN, then title+first-author. Two friends owning "the same book"
 // collapse to one candidate; a book already on your shelf is excluded by key.
-const dedupeKey = (b: Doc<"books">): string => {
+// Exported so the MCP layer (convex/mcpData.ts) reuses the SAME identity — the
+// recommender there must dedupe and filter dismissals against exactly these keys.
+export const dedupeKey = (b: Doc<"books">): string => {
   const work = b.workKey?.trim()
   if (work) return `w:${work}`
   const isbn = b.isbn?.replace(/[^0-9Xx]/g, "").toLowerCase()
@@ -49,7 +51,7 @@ const dedupeKey = (b: Doc<"books">): string => {
 // A book a friend has actually engaged with is a real recommendation; a book
 // still sitting unread+unrated on their wishlist is not (it's their to-read, not
 // a vouch). So everything qualifies EXCEPT unread, unrated wishlist items.
-const isVouchworthy = (b: Doc<"books">): boolean =>
+export const isVouchworthy = (b: Doc<"books">): boolean =>
   !(b.ownership === "wishlist" && b.readStatus === "unread" && b.rating === undefined)
 
 // How strongly an endorsement should sort within the (rare) overflow cap below —

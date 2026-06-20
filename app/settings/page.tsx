@@ -87,9 +87,9 @@ export default function SettingsPage() {
         </div>
         <p className="mb-4 max-w-prose text-sm text-teal/90">
           Generate a private link that lets Claude read <em>and update</em> your shelf — ask “what
-          am I reading?”, “what’s due soon?”, or tell it “I finished Dune, 5 stars”, “add The Hobbit
-          to my shelf”, “I returned my library book” right in chat. Add the URL as a custom MCP
-          connector in Claude.
+          am I reading?”, “what should I read next?”, “how’s my reading year going?”, or tell it “I
+          finished Dune, 5 stars”, “add The Hobbit to my shelf”, “recommend it to Maya” right in
+          chat. Add the URL as a custom MCP connector in Claude.
         </p>
 
         {token === undefined ? (
