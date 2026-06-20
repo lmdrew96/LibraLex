@@ -86,26 +86,51 @@ const mapDoc = (d: OLSearchDoc): DiscoveryCandidate | null => {
 // stored subjects ("Fantasy fiction") resolve. `page` offsets into the ranking so
 // the client can pull deeper titles to backfill dismissed picks — each page is
 // cached independently (offset is part of the cache key).
+// One Open Library fetch for (subject, page). Throws on a non-OK response so the
+// retry/caller can distinguish failure from a legitimately empty result.
+const fetchSubjectOnce = async (subject: string, page: number): Promise<DiscoveryCandidate[]> => {
+  // `language:eng` keeps auto-recommendations English — it filters server-side to
+  // works with an English edition (whose OL work title is reliably English), so a
+  // Portuguese/Spanish title never reaches the Discover row and the page stays full.
+  const q = `subject:"${subject.replace(/"/g, "")}" AND language:eng AND first_publish_year:[${YEAR_FLOOR} TO ${YEAR_CEIL}]`
+  const url =
+    `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}` +
+    `&sort=readinglog&limit=${PER_SUBJECT}&offset=${page * PER_SUBJECT}&fields=${SEARCH_FIELDS}`
+  const res = await fetchWithTimeout(url, OL_TIMEOUT_MS)
+  if (!res.ok) throw new Error(`Open Library responded ${res.status}`)
+  const data = (await res.json()) as { docs?: OLSearchDoc[] }
+  return (data.docs ?? []).map(mapDoc).filter((c): c is DiscoveryCandidate => c !== null)
+}
+
 const fetchSubject = async (subject: string, page: number): Promise<DiscoveryCandidate[]> => {
   const cacheKey = `${subject.trim().toLowerCase()}@${page}`
   const cached = subjectCache.get(cacheKey)
   if (cached && Date.now() - cached.at < SUBJECT_CACHE_TTL_MS) return cached.candidates
+
+  // Open Library's search index is eventually-consistent: a valid subject query can
+  // return an empty 200 on the first hit and resolve on a retry — the same lag
+  // /api/search documents and retries for its ISBN path. Page 0 is the base pool the
+  // Discover row renders from, so an un-retried empty there is what surfaced as the
+  // row "occasionally showing only two books": the flaky empty got cached for the
+  // full 6h TTL and served to every request on that warm instance. So: retry page 0
+  // on an empty batch, and NEVER cache an empty result — a transient dud must not
+  // poison the cache. Deeper pages (backfill) aren't retried: there an empty just
+  // means the catalog ran dry for that subject, which is a real signal, not flakiness.
+  const RETRIES = page === 0 ? 3 : 1
   try {
-    // `language:eng` keeps auto-recommendations English — it filters server-side to
-    // works with an English edition (whose OL work title is reliably English), so a
-    // Portuguese/Spanish title never reaches the Discover row and the page stays full.
-    const q = `subject:"${subject.replace(/"/g, "")}" AND language:eng AND first_publish_year:[${YEAR_FLOOR} TO ${YEAR_CEIL}]`
-    const url =
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}` +
-      `&sort=readinglog&limit=${PER_SUBJECT}&offset=${page * PER_SUBJECT}&fields=${SEARCH_FIELDS}`
-    const res = await fetchWithTimeout(url, OL_TIMEOUT_MS)
-    if (!res.ok) return cached?.candidates ?? []
-    const data = (await res.json()) as { docs?: OLSearchDoc[] }
-    const candidates = (data.docs ?? [])
-      .map(mapDoc)
-      .filter((c): c is DiscoveryCandidate => c !== null)
-    subjectCache.set(cacheKey, { candidates, at: Date.now() })
-    return candidates
+    let candidates: DiscoveryCandidate[] = []
+    for (let i = 0; i < RETRIES; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 350 * i))
+      candidates = await fetchSubjectOnce(subject, page)
+      if (candidates.length > 0) break
+    }
+    // Only cache a healthy (non-empty) batch — caching an empty would serve it for
+    // the whole TTL. An empty falls back to any prior good entry for this key.
+    if (candidates.length > 0) {
+      subjectCache.set(cacheKey, { candidates, at: Date.now() })
+      return candidates
+    }
+    return cached?.candidates ?? []
   } catch {
     // Serve a stale entry on a slow/failed refetch rather than nothing.
     return cached?.candidates ?? []
