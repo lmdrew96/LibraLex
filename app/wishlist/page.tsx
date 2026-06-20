@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Check, Heart, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { BookWithCover } from "@/lib/types"
+import { collapseEditions } from "@/lib/collapse-editions"
 import { AppShell } from "@/components/app-shell"
 import { AddBookDialog } from "@/components/add-book-dialog"
 import { BookCover } from "@/components/book-cover"
@@ -16,6 +17,9 @@ import { useConfirm } from "@/components/ui/confirm-dialog"
 
 export default function WishlistPage() {
   const books = useQuery(api.books.listBooks, { ownership: "wishlist" })
+  // Show each work once even if two editions were wishlisted (the rows stay in the DB;
+  // this only collapses the view). Keep `undefined` distinct so the skeleton still shows.
+  const deduped = books === undefined ? undefined : collapseEditions(books)
 
   return (
     <AppShell>
@@ -24,9 +28,9 @@ export default function WishlistPage() {
         <p className="mt-1 text-teal">Books you want — one tap away from your shelf.</p>
       </div>
 
-      {books === undefined ? (
+      {deduped === undefined ? (
         <BookGridSkeleton count={6} />
-      ) : books.length === 0 ? (
+      ) : deduped.length === 0 ? (
         <EmptyState
           icon={Heart}
           title="Nothing on the wishlist"
@@ -35,7 +39,7 @@ export default function WishlistPage() {
         />
       ) : (
         <ul className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {books.map((book) => (
+          {deduped.map((book) => (
             <li key={book._id}>
               <WishlistCard book={book} />
             </li>

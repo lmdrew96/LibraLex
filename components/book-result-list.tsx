@@ -5,6 +5,7 @@ import { useMutation } from "convex/react"
 import { toast } from "sonner"
 import { api } from "@/convex/_generated/api"
 import type { BookSearchResult } from "@/lib/types"
+import { collapseEditions } from "@/lib/collapse-editions"
 import { BookCover } from "@/components/book-cover"
 import { BookInfoDialog } from "@/components/book-info-dialog"
 import { Button } from "@/components/ui/button"
@@ -25,9 +26,12 @@ const bookArgs = (b: BookSearchResult) => ({
  *  with one-tap add actions. Shared by the Search page (title/author typeahead) and
  *  the author page (one author's catalog) so both surfaces behave identically. */
 export function BookResultList({ results }: { results: BookSearchResult[] }) {
+  // Collapse edition dupes (large print / audio / subtitle variants of one work) so
+  // both the search page and the author page that share this list show each work once.
+  const deduped = collapseEditions(results)
   return (
     <ul className="flex flex-col gap-1">
-      {results.map((b, i) => (
+      {deduped.map((b, i) => (
         <li key={`${b.workKey ?? b.title}-${i}`}>
           <BookInfoDialog
             book={b}
