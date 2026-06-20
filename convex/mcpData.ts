@@ -2,7 +2,13 @@ import { internalMutation, internalQuery } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { normalizeAuthors, sanitizeYear } from "./normalize"
-import { dedupeKey, endorsementStrength, isVouchworthy, tasteRatingWeight } from "./discover"
+import {
+  dedupeKey,
+  endorsementStrength,
+  identityKey,
+  isVouchworthy,
+  tasteRatingWeight,
+} from "./discover"
 import { profileFor, toPublicProfile } from "./users"
 import { areFriends } from "./friends"
 import { LOAN_PERIOD_MS } from "./util"
@@ -191,11 +197,14 @@ const resolveOne = (rows: Doc<"books">[], title: string, author?: string): Match
 }
 
 // Add a book to any shelf from chat ("add Dune to my wishlist", "add X, I own it",
-// "I'm reading Y"). Idempotent on title WITHIN the target shelf: a same-title entry
-// already on that shelf returns { status: "exists" } instead of stacking a dup.
-// Library adds capture a checkout + a default due date, mirroring books.addBook.
-// Bibliographic fields are best-effort — the door enriches via Open Library first,
-// falling back to bare title + author.
+// "I'm reading Y"). Dedupes across the WHOLE shelf by cross-shelf identity
+// (dedupeKey: workKey → isbn → title+author), so re-adding a book you already have
+// never stacks a duplicate: if it's on the target shelf already it's a no-op
+// ({ status: "exists" }); if it's on a DIFFERENT shelf it MOVES there
+// ({ status: "moved" }) instead of inserting a second row. Library moves capture a
+// checkout + default due date, and moving OFF the library shelf retires the loan
+// fields (mirrors books.updateBook). Bibliographic fields are best-effort — the door
+// enriches via Open Library first, falling back to bare title + author.
 export const addBookForUser = internalMutation({
   args: {
     userId: v.string(),
@@ -212,14 +221,59 @@ export const addBookForUser = internalMutation({
     libraryName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
+    const all = await ctx.db
       .query("books")
-      .withIndex("by_user_ownership", (q) =>
-        q.eq("userId", args.userId).eq("ownership", args.ownership),
-      )
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .collect()
-    const dup = existing.find((b) => normalizeTitle(b.title) === normalizeTitle(args.title))
-    if (dup) return { status: "exists" as const, title: dup.title, ownership: args.ownership }
+
+    // Resolve an existing copy across ALL shelves by cross-shelf identity. Fall back
+    // to a within-target-shelf title match for legacy rows that predate work-key
+    // enrichment (so an old title-only copy still dedupes rather than stacking).
+    const incomingKey = identityKey(args)
+    const existing =
+      all.find((b) => identityKey(b) === incomingKey) ??
+      all.find(
+        (b) =>
+          b.ownership === args.ownership &&
+          normalizeTitle(b.title) === normalizeTitle(args.title),
+      )
+
+    if (existing) {
+      if (existing.ownership === args.ownership) {
+        return { status: "exists" as const, title: existing.title, ownership: args.ownership }
+      }
+      // Move the existing copy to the new shelf instead of inserting a duplicate.
+      // Mirrors books.updateBook's ownership-transition rules so chat and the app
+      // agree on what a shelf move does to read state + loan fields.
+      const moveNow = Date.now()
+      const updates: Partial<Doc<"books">> = { ownership: args.ownership }
+      if (args.readStatus !== undefined) {
+        updates.readStatus = args.readStatus
+        if (args.readStatus === "reading" && !existing.startedAt) updates.startedAt = moveNow
+        if (args.readStatus === "read" && !existing.finishedAt) updates.finishedAt = moveNow
+      }
+      if (args.ownership === "library") {
+        // Becoming a loan — stamp checkout + default due date (mirrors a library add).
+        updates.checkoutDate = moveNow
+        updates.dueDate = moveNow + LOAN_PERIOD_MS
+        updates.returned = false
+        updates.libraryName = args.libraryName ?? existing.libraryName
+      } else {
+        // Leaving the library shelf retires its loan fields — don't carry a stale
+        // dueDate/returned onto a now-owned/wishlisted book.
+        updates.checkoutDate = undefined
+        updates.dueDate = undefined
+        updates.returned = undefined
+        updates.libraryName = undefined
+      }
+      await ctx.db.patch(existing._id, updates)
+      return {
+        status: "moved" as const,
+        title: existing.title,
+        from: existing.ownership,
+        ownership: args.ownership,
+      }
+    }
 
     const now = Date.now()
     const base = {

@@ -38,15 +38,25 @@ export type FriendCandidate = {
 // Stable identity for a book across shelves: prefer the OL work key, then a
 // normalized ISBN, then title+first-author. Two friends owning "the same book"
 // collapse to one candidate; a book already on your shelf is excluded by key.
-// Exported so the MCP layer (convex/mcpData.ts) reuses the SAME identity — the
-// recommender there must dedupe and filter dismissals against exactly these keys.
-export const dedupeKey = (b: Doc<"books">): string => {
+// Works on any record carrying these bibliographic fields — a stored Doc OR an
+// inbound add payload — so the MCP add path can resolve an existing copy by the
+// SAME identity it dedupes recommendations against (convex/mcpData.ts).
+export const identityKey = (b: {
+  workKey?: string
+  isbn?: string
+  title: string
+  authors: string[]
+}): string => {
   const work = b.workKey?.trim()
   if (work) return `w:${work}`
   const isbn = b.isbn?.replace(/[^0-9Xx]/g, "").toLowerCase()
   if (isbn) return `i:${isbn}`
   return `t:${b.title.trim().toLowerCase()}|${(b.authors[0] ?? "").trim().toLowerCase()}`
 }
+
+// The same identity, specialized to a stored book row. Kept as a named export
+// because the recommenders read it all over (here + mcpData).
+export const dedupeKey = (b: Doc<"books">): string => identityKey(b)
 
 // A book a friend has actually engaged with is a real recommendation; a book
 // still sitting unread+unrated on their wishlist is not (it's their to-read, not
