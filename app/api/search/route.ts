@@ -2,28 +2,25 @@ import { NextResponse } from "next/server"
 import type { BookSearchResult } from "@/lib/types"
 
 // Server-side book search. Source strategy:
-//  • ISBN/barcode path → Google Books (ISBN-exact) is the bibliographic source
-//    (title, authors, year, pages); Open Library supplies only the cover_i +
-//    workKey. Querying by exact ISBN kills the wrong-edition junk (narrators,
-//    translators, bad years) that fuzzy title-matching used to pull in.
-//  • Text typeahead → Open Library stays primary (it's quota-free and groups by
-//    work, which suits a keystroke-rate typeahead; keyless Google Books is
-//    globally quota-throttled, so it can't carry the high-frequency path). This
-//    is the "secondary, no-ISBN" path.
-// Covers always prefer Open Library's cover_i (rate-limit-free render); Google
-// Books' thumbnail is the fallback when OL has none. iTunes is retired.
-// Runs server-side so no CORS and no key ever reaches the client. Client
-// debounces (~300ms) — we don't debounce here.
+//  • Text typeahead + author catalog → GOOGLE BOOKS primary: fast, broad coverage,
+//    and in-quota with GOOGLE_BOOKS_API_KEY set. Open Library is the FALLBACK, used
+//    only when Google errors / over-quotas (429) — it's slower but work-grouped, so
+//    it's a resilient backstop, not the hot path. (This used to be inverted; an
+//    OL-primary typeahead ran 5–8s and intermittently 504'd, and tuning its timeout
+//    was tried twice without fixing the flakiness.)
+//  • ISBN/barcode path → Google Books (ISBN-exact) for biblio (title, authors, year,
+//    pages); Open Library supplies cover_i + workKey in parallel. Unchanged.
+// The OL work key + rate-limit-free cover_i a Google search result lacks are RECOVERED
+// on add by the enrich pipeline (convex/enrich.ts) via the ISBN, so cross-shelf dedup
+// and edition identity stay intact even though search no longer leads with OL.
+// Covers prefer OL's cover_i at render; Google's thumbnail is the fallback. iTunes is
+// retired. Runs server-side so no CORS and no key reaches the client. Client debounces
+// (~300ms). The function budget is raised so a slow OL fallback isn't killed mid-flight.
 
-// Open Library is slow AND flaky: text search.json runs 5–8s and sometimes times
-// out entirely, and its ISBN index is eventually-consistent (a just-valid ISBN often
-// returns [] on the first hit, then resolves on a retry — the "works on the 2nd/3rd
-// try" report). Tuning OL's timeout alone has been tried twice and search stays
-// spotty, so the text + author paths now FALL BACK to Google Books when OL fails:
-// OL gets one fast attempt, and if it times out/errors, Google Books (fast, and
-// in-quota with GOOGLE_BOOKS_API_KEY set) rescues the query instead of returning a
-// 504. The ISBN index's empty-200 lag still gets its dedicated retry below. The
-// function budget is raised so a slow-but-valid response isn't killed mid-flight.
+// A Google EMPTY result is a trustworthy no-match, so the typeahead doesn't retry OL
+// on empties (only on errors) — that keeps no-match queries fast. OL's own ISBN index
+// is eventually-consistent (a just-valid ISBN returns [] then resolves), so the
+// barcode path below keeps its dedicated empty-retry.
 export const maxDuration = 30
 
 const OPEN_LIBRARY_FIELDS =
@@ -253,22 +250,19 @@ export async function GET(request: Request): Promise<NextResponse> {
   // the author's best-known titles lead instead of obscure reprints. Same retry +
   // cover-backfill machinery as the text path.
   if (author) {
-    const q = `author:"${author.replace(/"/g, "")}"`
-    // One fast OL attempt (work-grouped, readinglog-sorted); a timeout/error or a
-    // flaky empty both fall through to the Google `inauthor:` rescue below.
-    let results: BookSearchResult[] = []
+    // Google Books by author, primary (fast, broad). Its results carry their own
+    // thumbnails, so no cover backfill. OL's work-grouped author catalog is the
+    // fallback only if Google errors / over-quotas.
     try {
-      results = await fetchOpenLibrary(
-        `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&sort=readinglog&limit=24&fields=${OPEN_LIBRARY_FIELDS}`,
-        OL_TEXT_TIMEOUT_MS,
-      )
+      return NextResponse.json({ results: await fetchGoogleTextSearch(`inauthor:"${author}"`) })
     } catch {
-      // swallow — empty `results` triggers the Google fallback next
-    }
-
-    if (results.length === 0) {
       try {
-        return NextResponse.json({ results: await fetchGoogleTextSearch(`inauthor:"${author}"`) })
+        const ol = await fetchOpenLibrary(
+          `https://openlibrary.org/search.json?q=${encodeURIComponent(`author:"${author.replace(/"/g, "")}"`)}&sort=readinglog&limit=24&fields=${OPEN_LIBRARY_FIELDS}`,
+          OL_TEXT_TIMEOUT_MS,
+        )
+        await backfillCovers(ol)
+        return NextResponse.json({ results: ol })
       } catch {
         return NextResponse.json(
           { results: [], error: "Couldn't load this author's books. Try again." },
@@ -276,9 +270,6 @@ export async function GET(request: Request): Promise<NextResponse> {
         )
       }
     }
-
-    await backfillCovers(results)
-    return NextResponse.json({ results })
   }
 
   // ── Barcode path: Google Books (ISBN-exact) biblio + Open Library cover ───────
@@ -332,37 +323,29 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({ results: [result] })
   }
 
-  // ── Text search path (secondary, no-ISBN): Open Library candidate list ────────
+  // ── Text search path: Google Books primary, Open Library fallback ─────────────
   if (query.length < 2) {
     return NextResponse.json({ results: [] satisfies BookSearchResult[] })
   }
-  // One fast OL attempt; both its failure modes — a timeout/error AND a flaky
-  // empty-200 (the lagging-index "works on the 2nd try") — leave `results` empty and
-  // fall through to the Google Books rescue below.
-  let results: BookSearchResult[] = []
   try {
-    results = await fetchOpenLibrary(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10&fields=${OPEN_LIBRARY_FIELDS}`,
-      OL_TEXT_TIMEOUT_MS,
-    )
+    // Google is fast and its volumes carry their own thumbnails, so no cover backfill.
+    // An empty result here is a real no-match — return it without an OL retry.
+    return NextResponse.json({ results: await fetchGoogleTextSearch(query) })
   } catch {
-    // swallow — the empty `results` triggers the Google fallback next
-  }
-
-  if (results.length === 0) {
-    // OL was slow, errored, or returned a flaky empty — give Google a shot before
-    // declaring "no matches". A real no-match returns Google-empty too; a genuine OL
-    // outage is rescued. Google results carry their own thumbnail, so no cover backfill.
+    // Google errored / over-quota — fall back to Open Library (work-grouped) with its
+    // cover backfill, so a Google outage doesn't sink search entirely.
     try {
-      return NextResponse.json({ results: await fetchGoogleTextSearch(query) })
+      const ol = await fetchOpenLibrary(
+        `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10&fields=${OPEN_LIBRARY_FIELDS}`,
+        OL_TEXT_TIMEOUT_MS,
+      )
+      await backfillCovers(ol)
+      return NextResponse.json({ results: ol })
     } catch {
       return NextResponse.json(
-        { results: [], error: "Search timed out. Try again." },
+        { results: [], error: "Search is unavailable right now. Try again." },
         { status: 504 },
       )
     }
   }
-
-  await backfillCovers(results)
-  return NextResponse.json({ results })
 }
