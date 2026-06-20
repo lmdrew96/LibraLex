@@ -55,9 +55,35 @@ export const isVouchworthy = (b: Doc<"books">): boolean =>
   !(b.ownership === "wishlist" && b.readStatus === "unread" && b.rating === undefined)
 
 // How strongly an endorsement should sort within the (rare) overflow cap below —
-// loved beats read beats merely-owned. Mirrors the client-side ranking boost.
-const endorsementStrength = (e: FriendEndorsement): number =>
+// loved beats read beats merely-owned. Exported so the MCP recommender
+// (convex/mcpData.ts) ranks friend picks by the SAME rule; typed structurally
+// (rating + readStatus) so both FriendEndorsement and the MCP's RecEndorsement fit.
+export const endorsementStrength = (e: {
+  rating?: number
+  readStatus: Doc<"books">["readStatus"]
+}): number =>
   (e.rating ?? 0) * 2 + (e.readStatus === "read" ? 2 : e.readStatus === "reading" ? 1 : 0)
+
+// Rating → taste weight for subject tallies. MUST mirror lib/recommend.ratingWeight
+// (the client engine behind the in-app Discover row) so chat "what should I read
+// next?" weights taste identically — the two run in different runtimes and can't
+// share the module. A read-but-unrated book takes the neutral 1.0.
+export const tasteRatingWeight = (rating?: number): number => {
+  switch (rating) {
+    case 5:
+      return 2.0
+    case 4:
+      return 1.5
+    case 3:
+      return 1.0
+    case 2:
+      return 0.5
+    case 1:
+      return 0.25
+    default:
+      return 1.0
+  }
+}
 
 // Cap the pool shipped to the client. Friend libraries are small today, so this
 // rarely bites; when it does, the strongest endorsements survive (taste ranking

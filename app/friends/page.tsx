@@ -11,6 +11,7 @@ import { AppShell } from "@/components/app-shell"
 import { EmptyState } from "@/components/empty-state"
 import { FriendAvatar } from "@/components/friend-avatar"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function FriendsPage() {
@@ -22,6 +23,7 @@ export default function FriendsPage() {
   const remove = useMutation(api.friends.removeFriend)
   const sendRequest = useMutation(api.friends.sendRequestByCode)
 
+  const { confirm, confirmDialog } = useConfirm()
   const [code, setCode] = useState("")
   const [adding, setAdding] = useState(false)
 
@@ -76,7 +78,15 @@ export default function FriendsPage() {
   }
 
   const unfriend = async (friendshipId: Id<"friendships">, name: string) => {
-    if (!confirm(`Remove ${name} from your friends?`)) return
+    if (
+      !(await confirm({
+        title: `Remove ${name}?`,
+        message: "You'll stop seeing each other's shelves. You can add them again with their code later.",
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return
     try {
       await remove({ friendshipId })
       toast.success(`Removed ${name}.`)
@@ -235,6 +245,7 @@ export default function FriendsPage() {
           </ul>
         )}
       </section>
+      {confirmDialog}
     </AppShell>
   )
 }

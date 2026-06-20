@@ -18,3 +18,10 @@ export const requireUserId = async (
   if (!userId) throw new Error("Not authenticated")
   return userId
 }
+
+// Default library loan period: 3 weeks. SINGLE server-side source — every code
+// path that stamps a due date imports this (books.addBook/checkoutBook,
+// mcpData.addBookForUser); it's a default, not a law (renewLoan lets the user
+// override). The client mirrors it as lib/loans.LOAN_PERIOD_MS — the two runtimes
+// can't share a module, so keep the day count identical if it ever changes.
+export const LOAN_PERIOD_MS = 21 * 24 * 60 * 60 * 1000

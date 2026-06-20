@@ -34,9 +34,15 @@ export const dueLabel = (dueDate: number, now?: number): string => {
   return `Due in ${days} day${days === 1 ? "" : "s"}`
 }
 
-/** Default loan period (3 weeks) added to a checkout time. */
+/** Default library loan period — 3 weeks. The Convex server mirrors this as
+ *  convex/util.LOAN_PERIOD_MS; the two runtimes can't share a module, so keep the
+ *  day count identical if it ever changes. */
+export const LOAN_PERIOD_DAYS = 21
+export const LOAN_PERIOD_MS = LOAN_PERIOD_DAYS * MS_PER_DAY
+
+/** Default due date (checkout + the loan period). */
 export const defaultDueDate = (checkout: number = Date.now()): number =>
-  checkout + 21 * MS_PER_DAY
+  checkout + LOAN_PERIOD_MS
 
 // ── <input type="date"> bridges — always LOCAL, never UTC parsing ──────────────
 

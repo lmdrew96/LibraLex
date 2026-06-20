@@ -3,6 +3,7 @@ import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
+import { LOAN_PERIOD_MS } from "./util"
 
 // Cached enrichment fields shared by addBook + the re-fetch action. Optional —
 // produced by the enrich-once pipeline (lib/enrich.ts), stored so reads need no
@@ -17,10 +18,6 @@ const enrichmentValidators = {
   averageRating: v.optional(v.number()),
   ratingsCount: v.optional(v.number()),
 }
-
-// Default library loan period: 3 weeks. It's a default, not a law — every code
-// path that sets a due date keeps it user-editable (see renewLoan).
-const LOAN_PERIOD_MS = 21 * 24 * 60 * 60 * 1000
 
 const ownershipValidator = v.union(
   v.literal("owned"),

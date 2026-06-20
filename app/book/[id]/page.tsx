@@ -23,6 +23,7 @@ import { MoreLikeThis } from "@/components/more-like-this"
 import { RatingsSummary } from "@/components/ratings-summary"
 import { RecommendDialog } from "@/components/recommend-dialog"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const READ_STATUSES: ReadStatus[] = ["unread", "reading", "read"]
@@ -51,6 +52,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
   const deleteBook = useMutation(api.books.deleteBook)
   const applyEnrichment = useMutation(api.books.applyEnrichment)
   const router = useRouter()
+  const { confirm, confirmDialog } = useConfirm()
 
   const [review, setReview] = useState<string | null>(null)
   const [refetching, setRefetching] = useState(false)
@@ -204,7 +206,15 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   const remove = async () => {
-    if (!confirm(`Delete “${book.title}” from your library? This can't be undone.`)) return
+    if (
+      !(await confirm({
+        title: `Delete “${book.title}”?`,
+        message: "This removes it from your library for good — it can't be undone.",
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return
     try {
       await deleteBook({ id: book._id })
       toast.success("Deleted.")
@@ -428,6 +438,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
         title="More to discover"
         layout="grid"
       />
+      {confirmDialog}
     </AppShell>
   )
 }

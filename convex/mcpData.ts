@@ -2,9 +2,10 @@ import { internalMutation, internalQuery } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { normalizeAuthors, sanitizeYear } from "./normalize"
-import { dedupeKey, isVouchworthy } from "./discover"
+import { dedupeKey, endorsementStrength, isVouchworthy, tasteRatingWeight } from "./discover"
 import { profileFor, toPublicProfile } from "./users"
 import { areFriends } from "./friends"
+import { LOAN_PERIOD_MS } from "./util"
 
 // Data layer for the MCP door (convex/http.ts). Every function here is INTERNAL —
 // callable only from other Convex functions, never the public internet. The sole
@@ -144,10 +145,6 @@ export const timeZoneForUser = internalQuery({
     return profile?.timeZone
   },
 })
-
-// Default library loan period: 3 weeks. Mirrors books.LOAN_PERIOD_MS — duplicated
-// (not imported) because that one is module-private to books.ts. Keep in sync.
-const LOAN_PERIOD_MS = 21 * 24 * 60 * 60 * 1000
 
 const normalizeTitle = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, " ")
 
@@ -550,9 +547,6 @@ type RecPick = {
   endorsers: RecEndorsement[]
 }
 
-const endorsementStrength = (e: RecEndorsement): number =>
-  (e.rating ?? 0) * 2 + (e.readStatus === "read" ? 2 : e.readStatus === "reading" ? 1 : 0)
-
 export const recommendInputsForUser = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, { userId }) => {
@@ -584,7 +578,7 @@ export const recommendInputsForUser = internalQuery({
       const isTaste =
         b.readStatus === "read" || b.readStatus === "reading" || b.ownership === "wishlist"
       if (!isTaste) continue
-      const weight = 1 + ((b.rating ?? 3) - 3) * 0.5
+      const weight = tasteRatingWeight(b.rating)
       for (const s of b.subjects ?? []) {
         const v2 = s.trim()
         if (v2) tally.set(v2, (tally.get(v2) ?? 0) + weight)

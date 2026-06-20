@@ -12,6 +12,7 @@ import { BookCover } from "@/components/book-cover"
 import { BookGridSkeleton } from "@/components/book-grid"
 import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 export default function WishlistPage() {
   const books = useQuery(api.books.listBooks, { ownership: "wishlist" })
@@ -48,6 +49,7 @@ export default function WishlistPage() {
 function WishlistCard({ book }: { book: BookWithCover }) {
   const updateBook = useMutation(api.books.updateBook)
   const deleteBook = useMutation(api.books.deleteBook)
+  const { confirm, confirmDialog } = useConfirm()
 
   const promote = async () => {
     try {
@@ -59,7 +61,15 @@ function WishlistCard({ book }: { book: BookWithCover }) {
   }
 
   const remove = async () => {
-    if (!confirm(`Remove “${book.title}” from your wishlist?`)) return
+    if (
+      !(await confirm({
+        title: `Remove “${book.title}”?`,
+        message: "This takes it off your wishlist.",
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return
     try {
       await deleteBook({ id: book._id })
       toast.success("Removed from wishlist.")
@@ -93,6 +103,7 @@ function WishlistCard({ book }: { book: BookWithCover }) {
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
+      {confirmDialog}
     </div>
   )
 }

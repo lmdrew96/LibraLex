@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function SettingsPage() {
@@ -19,6 +20,7 @@ export default function SettingsPage() {
   const undateReadBooks = useMutation(api.books.undateReadBooks)
   const profile = useQuery(api.users.getMyProfile)
   const setFavoriteGenres = useMutation(api.users.setFavoriteGenres)
+  const { confirm, confirmDialog } = useConfirm()
   const [busy, setBusy] = useState(false)
   const [undating, setUndating] = useState(false)
   // Optimistic genre selection so chips toggle instantly; falls back to the live
@@ -60,9 +62,12 @@ export default function SettingsPage() {
 
   const onRevoke = async () => {
     if (
-      !confirm(
-        "Revoke your MCP link? Any Claude connected with it loses access until you generate a new one.",
-      )
+      !(await confirm({
+        title: "Revoke your MCP link?",
+        message: "Any Claude connected with it loses access until you generate a new one.",
+        confirmLabel: "Revoke",
+        destructive: true,
+      }))
     ) {
       return
     }
@@ -88,9 +93,13 @@ export default function SettingsPage() {
 
   const onUndate = async () => {
     if (
-      !confirm(
-        "Clear the finish date on every book marked read? Your all-time count stays the same; your “read this year” stats drop to only the books you re-date afterward. This can't be undone in bulk.",
-      )
+      !(await confirm({
+        title: "Clear all finish dates?",
+        message:
+          "This clears the finish date on every book marked read. Your all-time count stays the same; your “read this year” stats drop to only the books you re-date afterward. This can't be undone in bulk.",
+        confirmLabel: "Clear dates",
+        destructive: true,
+      }))
     ) {
       return
     }
@@ -237,6 +246,7 @@ export default function SettingsPage() {
           Clear finish dates on read books
         </Button>
       </section>
+      {confirmDialog}
     </AppShell>
   )
 }
