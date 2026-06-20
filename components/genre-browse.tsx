@@ -14,6 +14,12 @@ import { PickShelf } from "@/components/pick-shelf"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const ROW_LIMIT = 12
+// Keep this many ready picks beyond the visible row. A single-subject genre query
+// returns a shallow page (~14), so without a buffer a row has almost no surplus and
+// visibly shrinks when a pick is added/declined before a slow refetch lands. Prefetch
+// a buffer up front so a replacement is always pre-loaded — the headroom Discover gets
+// for free from its deeper multi-subject pool.
+const REFILL_BUFFER = 6
 
 /** "Browse by genre" — the Search page's resting state. Shows a "Popular in <genre>"
  *  carousel for each of the user's favorite genres (or a default set until they pick
@@ -143,18 +149,26 @@ function GenreRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, poolKeysJoined, reportKeys])
 
-  // Render only the works this row owns. Until the parent has registered a key (first
-  // paint), treat it as self-owned so nothing flashes empty; once claims settle, the
-  // earliest genre wins and later rows drop it.
-  const visible = pool
-    .filter((p) => (ownerByKey.get(editionKey(p)) ?? index) === index)
-    .slice(0, ROW_LIMIT)
+  // Works this row owns (earliest genre wins; an unseen key defaults to self so
+  // nothing flashes empty on first paint). Held as a buffer deeper than the row so an
+  // added/declined pick is replaced instantly from the surplus rather than the row
+  // shrinking. `visible` is just the front slice of that owned buffer.
+  const owned = pool.filter((p) => (ownerByKey.get(editionKey(p)) ?? index) === index)
+  const visible = owned.slice(0, ROW_LIMIT)
 
   useEffect(() => {
-    if (!loading && !exhausted && results.length > 0 && visible.length < ROW_LIMIT) {
+    // Prefetch until the owned buffer comfortably clears the row, so add/decline pulls
+    // a ready replacement in with no fetch-wait. Bounded by the hook's page cap, and
+    // it also refills the buffer after the catalog backfills a consumed pick.
+    if (
+      !loading &&
+      !exhausted &&
+      results.length > 0 &&
+      owned.length < ROW_LIMIT + REFILL_BUFFER
+    ) {
       loadMore()
     }
-  }, [loading, exhausted, results.length, visible.length, loadMore])
+  }, [loading, exhausted, results.length, owned.length, loadMore])
 
   if (visible.length === 0) {
     return loading ? <GenreRowSkeleton label={genre.label} /> : null
