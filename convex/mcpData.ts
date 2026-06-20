@@ -574,12 +574,16 @@ export const recommendInputsForUser = internalQuery({
       .collect()
     const onShelf = new Set(mine.map(dedupeKey))
 
-    // Taste subjects — rating-weighted frequency over read/reading books. Mirrors
-    // lib/recommend.topTasteSubjects so the chat recs seed from the same signal as
-    // the in-app Discover row.
+    // Taste subjects — rating-weighted frequency over read/reading books PLUS
+    // wishlisted books (an explicit "I want this" forward-looking signal, and the
+    // only taste a wishlist-but-no-reads user has). Mirrors lib/recommend's
+    // discovery taste (topTasteSubjects/recommendFromPool with includeWishlist) so
+    // the chat recs seed from the same signal as the in-app Discover row.
     const tally = new Map<string, number>()
     for (const b of mine) {
-      if (b.readStatus !== "read" && b.readStatus !== "reading") continue
+      const isTaste =
+        b.readStatus === "read" || b.readStatus === "reading" || b.ownership === "wishlist"
+      if (!isTaste) continue
       const weight = 1 + ((b.rating ?? 3) - 3) * 0.5
       for (const s of b.subjects ?? []) {
         const v2 = s.trim()

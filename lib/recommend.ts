@@ -93,11 +93,30 @@ const ratingWeight = (b: RecBook): number => {
   }
 }
 
-// Taste profile = Σ ratingWeight · bookVector over read/reading books.
-const tasteProfile = (books: RecBook[], idf: Map<string, number>): Map<string, number> => {
+// Whether a book contributes to the taste profile. Read/reading always count —
+// you've engaged with them. A wishlisted book is an explicit, forward-looking "I
+// want this", so the CROSS-SHELF discovery surfaces opt it in (includeWishlist) to
+// shape which catalog/friend books surface — and, importantly, to give a reader
+// with a wishlist but no finished books a taste signal at all. The "rank my own
+// shelf" surfaces (recommendForYou, readNext) leave it OFF: a wishlist book is a
+// CANDIDATE there, so feeding it into the profile too would let it score against
+// itself and crowd out owned-unread books.
+const isTasteSource = (b: RecBook, includeWishlist: boolean): boolean =>
+  b.readStatus === "read" ||
+  b.readStatus === "reading" ||
+  (includeWishlist && b.ownership === "wishlist")
+
+// Taste profile = Σ ratingWeight · bookVector over the taste-source books. A
+// wishlisted-but-unread book carries no rating, so it lands at the neutral 1.0
+// weight — the same pull as a read-but-unrated book.
+const tasteProfile = (
+  books: RecBook[],
+  idf: Map<string, number>,
+  includeWishlist = false,
+): Map<string, number> => {
   const profile = new Map<string, number>()
   for (const b of books) {
-    if (b.readStatus !== "read" && b.readStatus !== "reading") continue
+    if (!isTasteSource(b, includeWishlist)) continue
     const w = ratingWeight(b)
     for (const [tok, val] of bookVector(b, idf)) profile.set(tok, (profile.get(tok) ?? 0) + w * val)
   }
@@ -132,13 +151,19 @@ export const tasteSourceCount = (books: RecBook[]): number =>
 // not what you read in college. Composes with the rating weight below; undated reads
 // (finishedAt null) would take a neutral mid-weight. Not built yet — hook only.
 
-/** The subjects that most define a user's taste — frequency across read/reading
- *  books, weighted by rating. Drives catalog discovery queries (the seed subjects
- *  we expand from). Empty until there's read history with subjects. */
-export const topTasteSubjects = (books: RecBook[], limit = 4): string[] => {
+/** The subjects that most define a user's taste — rating-weighted frequency across
+ *  their taste-source books. Drives catalog discovery queries (the seed subjects we
+ *  expand from), so it passes includeWishlist to seed from wishlisted books too —
+ *  otherwise a wishlist-only reader would seed nothing and Discover would stay
+ *  empty. Empty until there's taste history with subjects. */
+export const topTasteSubjects = (
+  books: RecBook[],
+  limit = 4,
+  includeWishlist = false,
+): string[] => {
   const tally = new Map<string, number>()
   for (const b of books) {
-    if (b.readStatus !== "read" && b.readStatus !== "reading") continue
+    if (!isTasteSource(b, includeWishlist)) continue
     const w = ratingWeight(b)
     for (const s of b.subjects ?? []) {
       const v = s.trim()
@@ -255,7 +280,9 @@ export const recommendFromPool = <T extends Tokenizable>(
 ): PoolPick<T>[] => {
   if (candidates.length === 0) return []
   const idf = computeIdf([...library, ...candidates])
-  const profile = tasteProfile(library, idf)
+  // Candidates are always OFF-shelf here, so folding wishlist into the taste profile
+  // is safe (nothing scores against itself) and lets a wishlist steer discovery.
+  const profile = tasteProfile(library, idf, true)
   if (profile.size === 0) return []
   return candidates
     .map((book) => {

@@ -53,7 +53,7 @@ export function DiscoverPicks({
   const subjects = active
     ? target
       ? (target.subjects ?? []).slice(0, 4)
-      : topTasteSubjects(library)
+      : topTasteSubjects(library, 4, true)
     : []
   const { results, loading, loadMore, exhausted } = useDiscover(subjects)
   // Shared with FriendPicks' subscription (Convex dedupes identical queries), so
