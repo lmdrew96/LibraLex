@@ -1,11 +1,12 @@
 "use client"
 
-import { useQuery } from "convex/react"
+import { useEffect, useState } from "react"
+import { useAction, useQuery } from "convex/react"
 import { Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
-import type { FriendEndorsement } from "@/convex/discover"
+import type { FriendEndorsement, ScoredFriendCandidate } from "@/convex/discover"
 import type { BookWithCover } from "@/lib/types"
-import { moreLikeThisFromPool, recommendFromPool } from "@/lib/recommend"
+import { moreLikeThisFromPool } from "@/lib/recommend"
 import { bookKey } from "@/lib/book-key"
 import { OffShelfPick } from "@/components/off-shelf-pick"
 import { PickShelf } from "@/components/pick-shelf"
@@ -32,7 +33,8 @@ const friendBoost = (endorsers: FriendEndorsement[]): number => {
 }
 
 // "Maya loved this · fantasy, mystery" — social verb from the lead endorser, then
-// the shared subjects that earned the content match.
+// (when there is one) the shared subjects that earned the content match. The
+// vector-scored path has no subject-overlap concept, so it passes shared: [].
 const explain = (endorsers: FriendEndorsement[], shared: string[]): string => {
   const lead = [...endorsers].sort((a, b) => endorsementWeight(b) - endorsementWeight(a))[0]
   const others = endorsers.length - 1
@@ -51,8 +53,10 @@ const explain = (endorsers: FriendEndorsement[], shared: string[]): string => {
 
 /** Recommendations drawn from your friends' shelves — books they own/loved that
  *  match your taste and you don't have yet. With `target` it's "more like this
- *  book" (content-only); without it, "matches your taste" (needs read history).
- *  Renders nothing when you have no friends, or none of their books fit. */
+ *  book" (content-only nearest-neighbor over the TF-IDF pool — no taste vector
+ *  needed); without it, "matches your taste" (Convex vector search over the
+ *  taste vector — see convex/discover.friendPicksVector). Renders nothing when
+ *  you have no friends, or none of their books fit. */
 export function FriendPicks({
   library,
   target,
@@ -66,41 +70,68 @@ export function FriendPicks({
 }) {
   const candidates = useQuery(api.discover.friendCandidates)
   const dismissed = useQuery(api.discover.dismissedKeys)
-  if (!candidates || candidates.length === 0) return null
-
-  // Drop anything the user marked "not interested" before ranking.
   const dismissedSet = new Set(dismissed ?? [])
-  const visible = candidates.filter((c) => !dismissedSet.has(bookKey(c)))
-  if (visible.length === 0) return null
+
+  // Vector search only runs in a Convex action, so it isn't a live query — fetch
+  // once on mount (and again if `target` toggles into/out of the pool path).
+  const friendPicksVector = useAction(api.discover.friendPicksVector)
+  const [vectorPicks, setVectorPicks] = useState<ScoredFriendCandidate[] | null>(null)
+  useEffect(() => {
+    if (target) return
+    let cancelled = false
+    void friendPicksVector({})
+      .then((result) => {
+        if (!cancelled) setVectorPicks(result)
+      })
+      .catch(() => {
+        if (!cancelled) setVectorPicks([])
+      })
+    return () => {
+      cancelled = true
+    }
+    // friendPicksVector's identity isn't guaranteed stable across renders, so
+    // it's deliberately left out of the deps — only re-fetch when the mode
+    // (target vs. taste vector) actually changes.
+  }, [target])
 
   const limit = layout === "carousel" ? 12 : 10
-  const ranked = (
-    target
-      ? moreLikeThisFromPool(target, library, visible)
-      : recommendFromPool(library, visible)
-  )
-    .map((p) => ({ ...p, score: p.score * friendBoost(p.book.endorsers) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
 
-  if (ranked.length === 0) return null
+  let items: { key: string; node: React.ReactNode }[]
 
-  return (
-    <PickShelf
-      title={title}
-      icon={Users}
-      layout={layout}
-      items={ranked.map((p) => ({
-        key: p.book.dedupeKey,
-        node: (
-          <OffShelfPick
-            book={p.book}
-            reason={explain(p.book.endorsers, p.sharedSubjects)}
-            endorsers={p.book.endorsers}
-            layout={layout}
-          />
-        ),
-      }))}
-    />
-  )
+  if (target) {
+    if (!candidates || candidates.length === 0) return null
+    const visible = candidates.filter((c) => !dismissedSet.has(bookKey(c)))
+    if (visible.length === 0) return null
+    const ranked = moreLikeThisFromPool(target, library, visible)
+      .map((p) => ({ ...p, score: p.score * friendBoost(p.book.endorsers) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+    if (ranked.length === 0) return null
+    items = ranked.map((p) => ({
+      key: p.book.dedupeKey,
+      node: (
+        <OffShelfPick
+          book={p.book}
+          reason={explain(p.book.endorsers, p.sharedSubjects)}
+          endorsers={p.book.endorsers}
+          layout={layout}
+        />
+      ),
+    }))
+  } else {
+    if (!vectorPicks || vectorPicks.length === 0) return null
+    const visible = vectorPicks.filter((c) => !dismissedSet.has(bookKey(c)))
+    if (visible.length === 0) return null
+    const ranked = visible
+      .map((c) => ({ ...c, boosted: c.score * friendBoost(c.endorsers) }))
+      .sort((a, b) => b.boosted - a.boosted)
+      .slice(0, limit)
+    if (ranked.length === 0) return null
+    items = ranked.map((c) => ({
+      key: c.dedupeKey,
+      node: <OffShelfPick book={c} reason={explain(c.endorsers, [])} endorsers={c.endorsers} layout={layout} />,
+    }))
+  }
+
+  return <PickShelf title={title} icon={Users} layout={layout} items={items} />
 }

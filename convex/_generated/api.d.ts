@@ -22,6 +22,7 @@ import type * as mcpData from "../mcpData.js";
 import type * as normalize from "../normalize.js";
 import type * as recs from "../recs.js";
 import type * as shelf from "../shelf.js";
+import type * as tasteVector from "../tasteVector.js";
 import type * as users from "../users.js";
 import type * as util from "../util.js";
 import type * as voyage from "../voyage.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   normalize: typeof normalize;
   recs: typeof recs;
   shelf: typeof shelf;
+  tasteVector: typeof tasteVector;
   users: typeof users;
   util: typeof util;
   voyage: typeof voyage;

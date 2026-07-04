@@ -1,4 +1,6 @@
-import { mutation, query } from "./_generated/server"
+import { action, internalQuery, mutation, query } from "./_generated/server"
+import type { QueryCtx } from "./_generated/server"
+import { internal } from "./_generated/api"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { getUserId, requireUserId } from "./util"
@@ -100,7 +102,66 @@ export const tasteRatingWeight = (rating?: number): number => {
 // then happens client-side over the survivors).
 const MAX_CANDIDATES = 200
 
+type CandidateAccumulator = FriendCandidate & { _coverStorageId?: Doc<"books">["coverStorageId"] }
+
+// Fold one friend's copy of a book into the byKey pool — first sighting creates
+// the candidate, a repeat (another friend owns the same work) merges in as an
+// extra endorser and opportunistically fills bibliographic gaps. Shared by the
+// TF-IDF pool (friendCandidates) and the vector-search pool (below) — they
+// differ in WHICH books they walk and HOW they're scored, not in how a hit
+// becomes a candidate.
+const mergeCandidate = (
+  byKey: Map<string, CandidateAccumulator>,
+  key: string,
+  b: Doc<"books">,
+  endorsement: FriendEndorsement,
+): void => {
+  const existing = byKey.get(key)
+  if (existing) {
+    existing.endorsers.push(endorsement)
+    existing.coverId ??= b.coverId
+    existing.coverUrlFallback ??= b.coverUrlFallback
+    existing.firstPublishYear ??= b.firstPublishYear
+    existing.pageCount ??= b.pageCount
+    if (!existing.subjects?.length && b.subjects?.length) existing.subjects = b.subjects
+    if (!existing._coverStorageId && b.coverStorageId) existing._coverStorageId = b.coverStorageId
+    return
+  }
+  byKey.set(key, {
+    dedupeKey: key,
+    title: b.title,
+    authors: b.authors,
+    isbn: b.isbn,
+    coverId: b.coverId,
+    coverUrlFallback: b.coverUrlFallback,
+    workKey: b.workKey,
+    firstPublishYear: b.firstPublishYear,
+    pageCount: b.pageCount,
+    subjects: b.subjects,
+    endorsers: [endorsement],
+    _coverStorageId: b.coverStorageId,
+  })
+}
+
+// Resolve each candidate's uploaded-cover storage id to a servable URL (a
+// friend's own file, same as getFriendShelf does), dropping the internal id.
+const resolveCoverUrls = async (
+  ctx: QueryCtx,
+  candidates: CandidateAccumulator[],
+): Promise<FriendCandidate[]> =>
+  Promise.all(
+    candidates.map(async ({ _coverStorageId, ...c }) => ({
+      ...c,
+      coverUrl: _coverStorageId
+        ? ((await ctx.storage.getUrl(_coverStorageId)) ?? undefined)
+        : undefined,
+    })),
+  )
+
 // Books a friend has, scored against your taste — assembled here, ranked client-side.
+// Still used for the "more like this book" pool (content-only, no taste vector
+// needed) and to exclude already-shown books from catalog discovery. The
+// taste-based "matches your shelf" row uses friendPicksVector (below) instead.
 export const friendCandidates = query({
   args: {},
   handler: async (ctx): Promise<FriendCandidate[]> => {
@@ -130,7 +191,7 @@ export const friendCandidates = query({
 
     // Walk each friend's shelf, merging duplicate works across friends into one
     // candidate that accrues every endorser.
-    const byKey = new Map<string, FriendCandidate & { _coverStorageId?: Doc<"books">["coverStorageId"] }>()
+    const byKey = new Map<string, CandidateAccumulator>()
     for (const friendId of friendIds) {
       const profile = await profileFor(ctx, friendId)
       if (!profile) continue
@@ -147,39 +208,11 @@ export const friendCandidates = query({
         const key = dedupeKey(b)
         if (mineKeys.has(key)) continue
 
-        const endorsement: FriendEndorsement = {
+        mergeCandidate(byKey, key, b, {
           ...endorser,
           rating: b.rating,
           readStatus: b.readStatus,
           review: b.review?.trim() ? b.review.trim() : undefined,
-        }
-
-        const existing = byKey.get(key)
-        if (existing) {
-          existing.endorsers.push(endorsement)
-          // Opportunistically fill any bibliographic gaps from this copy.
-          existing.coverId ??= b.coverId
-          existing.coverUrlFallback ??= b.coverUrlFallback
-          existing.firstPublishYear ??= b.firstPublishYear
-          existing.pageCount ??= b.pageCount
-          if (!existing.subjects?.length && b.subjects?.length) existing.subjects = b.subjects
-          if (!existing._coverStorageId && b.coverStorageId) existing._coverStorageId = b.coverStorageId
-          continue
-        }
-
-        byKey.set(key, {
-          dedupeKey: key,
-          title: b.title,
-          authors: b.authors,
-          isbn: b.isbn,
-          coverId: b.coverId,
-          coverUrlFallback: b.coverUrlFallback,
-          workKey: b.workKey,
-          firstPublishYear: b.firstPublishYear,
-          pageCount: b.pageCount,
-          subjects: b.subjects,
-          endorsers: [endorsement],
-          _coverStorageId: b.coverStorageId,
         })
       }
     }
@@ -190,16 +223,116 @@ export const friendCandidates = query({
       return sb - sa
     })
 
-    // Resolve uploaded covers (a friend's own file, same as getFriendShelf does)
-    // only for the survivors, then drop the internal storage-id field.
-    return await Promise.all(
-      candidates.slice(0, MAX_CANDIDATES).map(async ({ _coverStorageId, ...c }) => ({
-        ...c,
-        coverUrl: _coverStorageId
-          ? ((await ctx.storage.getUrl(_coverStorageId)) ?? undefined)
-          : undefined,
-      })),
+    return await resolveCoverUrls(ctx, candidates.slice(0, MAX_CANDIDATES))
+  },
+})
+
+// ── Vector-search friend picks (taste vector → nearest neighbor) ──────────────
+// Replaces the TF-IDF recommendFromPool scoring for the "matches your shelf"
+// FriendPicks row. Vector search only runs in actions, so this is a thin
+// action wrapping two internal queries (gather inputs, assemble hits into
+// candidates) around the ctx.vectorSearch call itself.
+
+export type ScoredFriendCandidate = FriendCandidate & { score: number }
+
+export const _friendVectorInputs = internalQuery({
+  args: { me: v.string() },
+  handler: async (ctx, { me }): Promise<{ friendIds: string[]; queryVector: number[] | null }> => {
+    const asRequester = await ctx.db
+      .query("friendships")
+      .withIndex("by_requester", (q) => q.eq("requesterId", me))
+      .collect()
+    const asAddressee = await ctx.db
+      .query("friendships")
+      .withIndex("by_addressee", (q) => q.eq("addresseeId", me))
+      .collect()
+    const friendIds = [...asRequester, ...asAddressee]
+      .filter((f) => f.status === "accepted")
+      .map((f) => (f.requesterId === me ? f.addresseeId : f.requesterId))
+    const profile = await profileFor(ctx, me)
+    return { friendIds, queryVector: profile?.tasteVector ?? null }
+  },
+})
+
+export const _assembleVectorCandidates = internalQuery({
+  args: {
+    me: v.string(),
+    hits: v.array(v.object({ id: v.id("books"), score: v.number() })),
+  },
+  handler: async (ctx, { me, hits }): Promise<ScoredFriendCandidate[]> => {
+    const mine = await ctx.db
+      .query("books")
+      .withIndex("by_user", (q) => q.eq("userId", me))
+      .collect()
+    const mineKeys = new Set(mine.map(dedupeKey))
+
+    const byKey = new Map<string, CandidateAccumulator>()
+    const scoreByKey = new Map<string, number>()
+    const profileCache = new Map<string, Doc<"users"> | null>()
+    const profileForCached = async (userId: string) => {
+      if (!profileCache.has(userId)) profileCache.set(userId, await profileFor(ctx, userId))
+      return profileCache.get(userId) ?? null
+    }
+
+    for (const { id, score } of hits) {
+      const b = await ctx.db.get(id)
+      if (!b || b.userId === me) continue
+      if (!isVouchworthy(b)) continue
+
+      const ownerProfile = await profileForCached(b.userId)
+      if (!ownerProfile) continue
+      if (hiddenShelfSet(ownerProfile).has(b.ownership)) continue // owner keeps this shelf private
+
+      const key = dedupeKey(b)
+      if (mineKeys.has(key)) continue
+
+      mergeCandidate(byKey, key, b, {
+        ...toPublicProfile(ownerProfile),
+        rating: b.rating,
+        readStatus: b.readStatus,
+        review: b.review?.trim() ? b.review.trim() : undefined,
+      })
+      // Best score across a work's copies (a friend's near-identical embedding
+      // of the same description scores about the same either way).
+      scoreByKey.set(key, Math.max(scoreByKey.get(key) ?? -Infinity, score))
+    }
+
+    const candidates = [...byKey.values()].sort(
+      (a, b) => (scoreByKey.get(b.dedupeKey) ?? 0) - (scoreByKey.get(a.dedupeKey) ?? 0),
     )
+    const withUrls = await resolveCoverUrls(ctx, candidates.slice(0, MAX_CANDIDATES))
+    return withUrls.map((c) => ({ ...c, score: scoreByKey.get(c.dedupeKey) ?? 0 }))
+  },
+})
+
+// Nearest-neighbor search over friends' book embeddings, scored by similarity
+// to my taste vector — the vector-engine replacement for recommendFromPool on
+// this surface. Empty until I have a taste vector (cold start, mirroring
+// recommendFromPool's old behavior) or any accepted friends.
+export const friendPicksVector = action({
+  args: {},
+  handler: async (ctx): Promise<ScoredFriendCandidate[]> => {
+    const identity = await ctx.auth.getUserIdentity()
+    const me = identity?.tokenIdentifier
+    if (!me) return []
+
+    const inputs = await ctx.runQuery(internal.discover._friendVectorInputs, { me })
+    if (!inputs.queryVector || inputs.friendIds.length === 0) return []
+
+    const hits = await ctx.vectorSearch("books", "by_embedding", {
+      vector: inputs.queryVector,
+      limit: 128,
+      filter: (q) =>
+        inputs.friendIds.length === 1
+          ? q.eq("userId", inputs.friendIds[0])
+          : q.or(...inputs.friendIds.map((id) => q.eq("userId", id))),
+    })
+    if (hits.length === 0) return []
+
+    return await ctx.runQuery(internal.discover._assembleVectorCandidates, {
+      me,
+      hits: hits.map((h) => ({ id: h._id, score: h._score })),
+    })
   },
 })
 

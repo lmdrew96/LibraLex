@@ -121,6 +121,14 @@ export default defineSchema({
         ),
       ),
     ),
+    // Rolling centroid (running mean) of embeddings for this user's read/reading
+    // books — see convex/tasteVector.ts. Updated incrementally on the unread →
+    // read/reading transition, not recomputed from scratch each time,
+    // so it only ever grows more informed forward (un-reading or deleting a
+    // taste-source book doesn't retract its contribution). tasteVectorCount is
+    // the running-mean denominator.
+    tasteVector: v.optional(v.array(v.float64())),
+    tasteVectorCount: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])

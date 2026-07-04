@@ -4,6 +4,7 @@ import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
 import { LOAN_PERIOD_MS } from "./util"
+import { rollTasteVector } from "./tasteVector"
 
 // Cached enrichment fields shared by addBook + the re-fetch action. Optional —
 // produced by the enrich-once pipeline (lib/enrich.ts), stored so reads need no
@@ -263,6 +264,18 @@ export const updateBook = mutation({
     }
 
     await ctx.db.patch(args.id, updates)
+
+    // A book newly finished/started feeds the taste vector (see
+    // convex/tasteVector.ts). Books added straight to "read" get picked up here
+    // too, on their next status touch, IF they already have an embedding by
+    // then — applyEnrichment below handles the more common case where the
+    // embedding lands after the book's already a taste source.
+    const wasTasteSource = book.readStatus === "read" || book.readStatus === "reading"
+    const nextReadStatus = updates.readStatus ?? book.readStatus
+    const isTasteSourceNow = nextReadStatus === "read" || nextReadStatus === "reading"
+    if (!wasTasteSource && isTasteSourceNow && book.embedding?.length) {
+      await rollTasteVector(ctx, userId, book.embedding)
+    }
   },
 })
 
@@ -326,6 +339,15 @@ export const applyEnrichment = mutation({
       ratingsCount: args.ratingsCount ?? book.ratingsCount,
       embedding: args.embedding ?? book.embedding,
     })
+
+    // A book that was already a taste source (added straight to "read", or
+    // read before the embedding pipeline existed) only now has a vector to
+    // contribute — roll it in the moment it arrives.
+    const gotFirstEmbedding = !book.embedding?.length && (args.embedding?.length ?? 0) > 0
+    const isTasteSource = book.readStatus === "read" || book.readStatus === "reading"
+    if (gotFirstEmbedding && isTasteSource) {
+      await rollTasteVector(ctx, userId, args.embedding!)
+    }
   },
 })
 
