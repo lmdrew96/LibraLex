@@ -20,6 +20,7 @@ export type EnrichedBook = {
   authorBios?: { name: string; bio?: string }[]
   averageRating?: number // Google Books community average (0–5)
   ratingsCount?: number // number of Google Books ratings behind that average
+  embedding?: number[] // Voyage vector (see convex/embed.ts) — not set by enrichBook itself
 }
 
 // The enrich-once engine. Merges Google Books (bibliographic) + Open Library

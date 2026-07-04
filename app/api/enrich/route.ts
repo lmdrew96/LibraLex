@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { enrichBook, type EnrichedBook } from "@/convex/enrich"
+import { embedBook } from "@/convex/embed"
 
 // Enrich-once endpoint: takes a picked search/scan candidate and returns the full
 // merged + normalized record (description, categories, subjects, author bios) to
@@ -22,7 +23,10 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const enriched = await enrichBook({ ...candidate, authors: candidate.authors ?? [] })
-    return NextResponse.json({ book: enriched })
+    // Best-effort — a failed/empty embedding just leaves the book unembedded;
+    // the backfill job picks it up on the next run.
+    const embedding = await embedBook(enriched).catch(() => null)
+    return NextResponse.json({ book: { ...enriched, embedding: embedding ?? undefined } })
   } catch {
     // Enrichment is best-effort — never block an add. Fall back to the candidate.
     return NextResponse.json({ book: candidate })

@@ -35,6 +35,12 @@ export default defineSchema({
     averageRating: v.optional(v.number()), // GB community average (0–5) — shown alongside the LibraLex community average
     ratingsCount: v.optional(v.number()), // number of GB ratings behind averageRating
 
+    // Voyage voyage-4 embedding of title/authors/description/subjects (see
+    // convex/embed.ts) — populated on add (convex/enrich.ts hook) and by the
+    // convex/backfill.ts batch job. Absent until embedded; never overwritten with
+    // an empty vector on re-embed (see backfill's preserve-on-empty rule).
+    embedding: v.optional(v.array(v.float64())),
+
     // ── shelf relationship ────────────────────────────────────────────────────
     // "none" = read/encountered but not in your possession (a friend's copy, a
     // returned library book, a digital read). It carries no loan fields and never
@@ -67,7 +73,16 @@ export default defineSchema({
     // Cross-user lookups by book identity — power the LibraLex community average,
     // which collects every user's copy of a title and averages their ratings.
     .index("by_workKey", ["workKey"])
-    .index("by_isbn", ["isbn"]),
+    .index("by_isbn", ["isbn"])
+    // Nearest-neighbor search over embeddings (see convex/voyage.ts for the
+    // dimension count). filterFields lets a search scope to one user's shelf
+    // (recommendForYou-style) or OR across a friend list (FriendPicks) without a
+    // full table scan.
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1024,
+      filterFields: ["userId"],
+    }),
 
   // One profile row per Clerk identity. Minted on first authenticated load
   // (see users.ensureProfile) and kept in sync with Clerk's name/avatar. The

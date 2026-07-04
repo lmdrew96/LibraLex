@@ -304,6 +304,7 @@ export const applyEnrichment = mutation({
     firstPublishYear: v.optional(v.number()),
     pageCount: v.optional(v.number()),
     ...enrichmentValidators,
+    embedding: v.optional(v.array(v.float64())),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx)
@@ -323,6 +324,7 @@ export const applyEnrichment = mutation({
       authorBios: args.authorBios ?? book.authorBios,
       averageRating: args.averageRating ?? book.averageRating,
       ratingsCount: args.ratingsCount ?? book.ratingsCount,
+      embedding: args.embedding ?? book.embedding,
     })
   },
 })
