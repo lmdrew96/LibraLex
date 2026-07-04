@@ -208,9 +208,12 @@ const fetchOpenLibraryByIsbn = async (isbn: string): Promise<OpenLibraryEdition 
   }
 }
 
-type OpenLibraryWork = { description: string | undefined; subjects: string[]; authorKeys: string[] }
+// Exported for convex/catalog.ts, which only needs the description/subjects
+// half of this (no author bios, no GB/ISBN lookups — catalog candidates have
+// no ISBN anyway).
+export type OpenLibraryWork = { description: string | undefined; subjects: string[]; authorKeys: string[] }
 
-const fetchOpenLibraryWork = async (workKey: string): Promise<OpenLibraryWork | null> => {
+export const fetchOpenLibraryWork = async (workKey: string): Promise<OpenLibraryWork | null> => {
   if (!/^\/works\/OL\w+W$/.test(workKey)) return null
   try {
     const res = await fetchWithTimeout(`https://openlibrary.org${workKey}.json`, OL_TIMEOUT_MS)

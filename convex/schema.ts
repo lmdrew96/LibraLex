@@ -35,8 +35,8 @@ export default defineSchema({
     averageRating: v.optional(v.number()), // GB community average (0–5) — shown alongside the LibraLex community average
     ratingsCount: v.optional(v.number()), // number of GB ratings behind averageRating
 
-    // Voyage voyage-4 embedding of title/authors/description/subjects (see
-    // convex/embed.ts) — populated on add (convex/enrich.ts hook) and by the
+    // Gemini gemini-embedding-2 embedding of title/authors/description/subjects
+    // (see convex/embed.ts) — populated on add (convex/enrich.ts hook) and by the
     // convex/backfill.ts batch job. Absent until embedded; never overwritten with
     // an empty vector on re-embed (see backfill's preserve-on-empty rule).
     embedding: v.optional(v.array(v.float64())),
@@ -74,13 +74,13 @@ export default defineSchema({
     // which collects every user's copy of a title and averages their ratings.
     .index("by_workKey", ["workKey"])
     .index("by_isbn", ["isbn"])
-    // Nearest-neighbor search over embeddings (see convex/voyage.ts for the
+    // Nearest-neighbor search over embeddings (see convex/gemini.ts for the
     // dimension count). filterFields lets a search scope to one user's shelf
     // (recommendForYou-style) or OR across a friend list (FriendPicks) without a
     // full table scan.
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
-      dimensions: 1024,
+      dimensions: 1536,
       filterFields: ["userId"],
     }),
 
@@ -210,4 +210,27 @@ export default defineSchema({
     ),
     refreshedAt: v.number(),
   }).index("by_subject", ["subject"]),
+
+  // A broad, embedded book catalog — independent of any user's shelf — seeded
+  // from Open Library across the curated genre list (convex/catalog.ts) and
+  // powering "ask for a book" free-text search (convex/search.ts). Distinct
+  // from `books` (which only has embeddings for books someone actually added):
+  // this exists purely to be semantically searched, so an entry is only ever
+  // inserted once it already has a vector — no partial/unembedded rows.
+  catalogBooks: defineTable({
+    workKey: v.string(), // OL /works/OL...W — the identity for cross-genre dedup
+    title: v.string(),
+    authors: v.array(v.string()),
+    coverId: v.optional(v.number()),
+    firstPublishYear: v.optional(v.number()),
+    subjects: v.optional(v.array(v.string())),
+    description: v.optional(v.string()),
+    embedding: v.array(v.float64()),
+    seededAt: v.number(),
+  })
+    .index("by_workKey", ["workKey"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+    }),
 })

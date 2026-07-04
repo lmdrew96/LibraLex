@@ -13,8 +13,9 @@ import { v } from "convex/values"
 
 // The genre subjects to precompute. MUST mirror the `subject` values in lib/genres.ts
 // (the frontend source of truth; Convex can't import it, so the list is duplicated —
-// add a genre there, add its subject here).
-const GENRE_SUBJECTS = [
+// add a genre there, add its subject here). Exported for convex/catalog.ts, which
+// seeds its own (much deeper) one-off pull across the same genre set.
+export const GENRE_SUBJECTS = [
   "fantasy",
   "science fiction",
   "mystery",

@@ -4,24 +4,21 @@ import { useState, type FormEvent } from "react"
 import { useAction } from "convex/react"
 import { Search, Sparkles } from "lucide-react"
 import { api } from "@/convex/_generated/api"
-import type { ScoredFriendCandidate } from "@/convex/discover"
-import { explainEndorsement } from "@/lib/friend-endorsement"
+import type { CatalogSearchResult } from "@/convex/search"
 import { OffShelfPick } from "@/components/off-shelf-pick"
 import { Skeleton } from "@/components/ui/skeleton"
 
 /** Free-text "ask for a book" search — embeds the query and matches it against
- *  the same vector index FriendPicks' taste-based row uses (see
- *  convex/search.ts). Same visibility scope as FriendPicks: your friends'
- *  shelves, minus anything already yours. Explicit submit rather than
- *  live-as-you-type — each search is a real Voyage embedding call, and the
- *  free tier caps at 3 requests/minute. */
+ *  the broad catalog seeded by convex/catalog.ts (see convex/search.ts), not
+ *  any shelf. Explicit submit rather than live-as-you-type — each search is a
+ *  real Gemini embedding call. */
 export function AskForABook() {
   const search = useAction(api.search.searchBooksByQuery)
   const [query, setQuery] = useState("")
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState(false)
   const [searchedFor, setSearchedFor] = useState<string | null>(null)
-  const [results, setResults] = useState<ScoredFriendCandidate[]>([])
+  const [results, setResults] = useState<CatalogSearchResult[]>([])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -81,21 +78,14 @@ export function AskForABook() {
       )}
 
       {!searching && !error && searchedFor && results.length === 0 && (
-        <p className="text-sm text-teal">
-          Nothing from your friends’ shelves matched “{searchedFor}”.
-        </p>
+        <p className="text-sm text-teal">No catalog matches for “{searchedFor}”.</p>
       )}
 
       {!searching && results.length > 0 && (
         <ul className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
           {results.map((book) => (
             <li key={book.dedupeKey} className="shrink-0">
-              <OffShelfPick
-                book={book}
-                reason={explainEndorsement(book.endorsers)}
-                endorsers={book.endorsers}
-                layout="carousel"
-              />
+              <OffShelfPick book={book} reason="Matches your search" layout="carousel" />
             </li>
           ))}
         </ul>

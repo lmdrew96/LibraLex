@@ -3,8 +3,7 @@ import { internal } from "./_generated/api"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { enrichBook } from "./enrich"
-import { embedBook, type EmbeddableBook } from "./embed"
-import { VoyageRateLimitedError } from "./voyage"
+import { embedBookWithRetry } from "./embed"
 
 // One-off (re-runnable) enrich + normalize backfill for the existing shelf.
 // INTERNAL — not client-exposed; run from the CLI against whichever deployment
@@ -15,13 +14,13 @@ import { VoyageRateLimitedError } from "./voyage"
 // Reuses the same enrichBook engine as the add path, so a backfilled record is
 // identical to a freshly-enriched one: GB bibliographic (prose authors, edition
 // year, description, categories) + OL (cover_i, work subjects, author bios),
-// normalized; comics keep their stored creators. Also embeds (Voyage) any book
+// normalized; comics keep their stored creators. Also embeds (Gemini) any book
 // that doesn't have a vector yet, using the freshly-merged description/subjects.
 //
-// Requires GOOGLE_BOOKS_API_KEY and VOYAGE_API_KEY in the deployment env
+// Requires GOOGLE_BOOKS_API_KEY and GEMINI_API_KEY in the deployment env
 // (un-referrer-restricted):
 //   npx convex env set GOOGLE_BOOKS_API_KEY <key>
-//   npx convex env set VOYAGE_API_KEY <key>
+//   npx convex env set GEMINI_API_KEY <key>
 
 const authorBiosValidator = v.optional(
   v.array(v.object({ name: v.string(), bio: v.optional(v.string()) })),
@@ -55,25 +54,6 @@ export const _applyEnrichment = internalMutation({
 })
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
-
-// A Voyage account with no payment method on file is capped at 3 req/min, which
-// a catalog-sized batch exceeds almost immediately. Wait out the window and
-// retry rather than leaving books permanently unembedded — this is a manual,
-// CLI-invoked job, so a slower run is a fine trade for actually finishing.
-const EMBED_RETRY_WAIT_MS = 21_000
-const EMBED_MAX_ATTEMPTS = 4
-
-const embedWithRetry = async (b: EmbeddableBook): Promise<number[] | null> => {
-  for (let attempt = 1; attempt <= EMBED_MAX_ATTEMPTS; attempt++) {
-    try {
-      return await embedBook(b)
-    } catch (err) {
-      if (!(err instanceof VoyageRateLimitedError) || attempt === EMBED_MAX_ATTEMPTS) return null
-      await new Promise((resolve) => setTimeout(resolve, EMBED_RETRY_WAIT_MS))
-    }
-  }
-  return null
-}
 
 type BackfillChange = {
   title: string
@@ -137,7 +117,7 @@ export const enrichAllBooks = internalAction({
       // fields: a failed embed leaves `embedding` at its existing value (undefined).
       const embeddingMissing = !b.embedding || b.embedding.length === 0
       if (embeddingMissing) {
-        const embedded = await embedWithRetry({
+        const embedded = await embedBookWithRetry({
           title: b.title,
           authors: next.authors,
           description: next.description,
