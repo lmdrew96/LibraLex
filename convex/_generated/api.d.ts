@@ -21,6 +21,7 @@ import type * as mcpAuth from "../mcpAuth.js";
 import type * as mcpData from "../mcpData.js";
 import type * as normalize from "../normalize.js";
 import type * as recs from "../recs.js";
+import type * as search from "../search.js";
 import type * as shelf from "../shelf.js";
 import type * as tasteVector from "../tasteVector.js";
 import type * as users from "../users.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   mcpData: typeof mcpData;
   normalize: typeof normalize;
   recs: typeof recs;
+  search: typeof search;
   shelf: typeof shelf;
   tasteVector: typeof tasteVector;
   users: typeof users;

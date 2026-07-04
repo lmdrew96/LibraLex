@@ -8,6 +8,7 @@ import { Sparkles, X } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
 import { AppShell } from "@/components/app-shell"
+import { AskForABook } from "@/components/ask-for-a-book"
 import { BookCover } from "@/components/book-cover"
 import { BookInfoDialog } from "@/components/book-info-dialog"
 import { DiscoverPicks } from "@/components/discover-picks"
@@ -59,6 +60,10 @@ export default function RecsPage() {
         <p className="mt-1 text-teal">
           Picks shaped by your taste, your friends&apos; shelves, and the wider catalog.
         </p>
+      </div>
+
+      <div className="mb-10">
+        <AskForABook />
       </div>
 
       {/* Browse: taste-based, friends' shelves, and catalog discovery — moved here
