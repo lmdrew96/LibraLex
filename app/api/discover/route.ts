@@ -118,23 +118,36 @@ const fetchSubjectOnce = async (subject: string, page: number): Promise<Discover
   return (data.docs ?? []).map(mapDoc).filter((c): c is DiscoveryCandidate => c !== null)
 }
 
+// Pages already folded into discoverCache's precomputed pool (mirrors PAGES in
+// convex/discoverCache.ts) — a precomputed subject's live-OL backfill continues from
+// here instead of re-fetching (and discarding as duplicates) pages already cached.
+const PRECOMPUTED_OL_PAGES = 3
+
 const fetchSubject = async (subject: string, page: number): Promise<DiscoveryCandidate[]> => {
   // 1. Precomputed Convex pool (daily cron) — the fast, reliable path for genre
-  //    subjects. The whole deep pool ships on page 0; deeper pages are empty for a
-  //    cached subject (the carousel reads it all at once and stops paginating).
+  //    subjects. Page 0 ships the whole precomputed pool instantly. Deeper pages
+  //    (the carousel backfilling after shelf/dismiss exclusions thin the row below
+  //    its buffer target) fall through to live OL below, continuing past the pages
+  //    the precompute already covered — the row must keep replenishing beyond the
+  //    initial ~42-book pool, not stop paginating once it's exhausted.
   //    try/catch so an unreachable / not-yet-deployed Convex just falls through to OL.
+  let olPage = page
   if (convexClient) {
     try {
       const precomputed = await convexClient.query(api.discoverCache.getBySubject, { subject })
-      if (precomputed.length > 0) return page === 0 ? precomputed : []
+      if (precomputed.length > 0) {
+        if (page === 0) return precomputed
+        olPage = PRECOMPUTED_OL_PAGES + (page - 1)
+      }
     } catch {
       // Convex unreachable or function not deployed yet — fall through to live OL.
     }
   }
 
   // 2. Module cache + live OL (the fallback for not-yet-precomputed subjects, e.g.
-  //    per-user taste subjects, and until the cron first runs).
-  const cacheKey = `${subject.trim().toLowerCase()}@${page}`
+  //    per-user taste subjects, and until the cron first runs — plus deep backfill
+  //    pages for precomputed genre subjects once their row runs low).
+  const cacheKey = `${subject.trim().toLowerCase()}@${olPage}`
   const cached = subjectCache.get(cacheKey)
   if (cached && Date.now() - cached.at < SUBJECT_CACHE_TTL_MS) return cached.candidates
 
@@ -147,12 +160,12 @@ const fetchSubject = async (subject: string, page: number): Promise<DiscoveryCan
   // on an empty batch, and NEVER cache an empty result — a transient dud must not
   // poison the cache. Deeper pages (backfill) aren't retried: there an empty just
   // means the catalog ran dry for that subject, which is a real signal, not flakiness.
-  const RETRIES = page === 0 ? 3 : 1
+  const RETRIES = olPage === 0 ? 3 : 1
   try {
     let candidates: DiscoveryCandidate[] = []
     for (let i = 0; i < RETRIES; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, 350 * i))
-      candidates = await fetchSubjectOnce(subject, page)
+      candidates = await fetchSubjectOnce(subject, olPage)
       if (candidates.length > 0) break
     }
     // Only cache a healthy (non-empty) batch — caching an empty would serve it for
