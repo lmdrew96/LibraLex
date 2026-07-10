@@ -7,7 +7,10 @@
 // Identity here is by WORK, deliberately DIFFERENT from lib/book-key.bookKey (which
 // keys a shelf COPY by workKey → isbn → title+author). Editions of one work have
 // DIFFERENT ISBNs, so ISBN must NOT be part of edition identity — we group on the
-// Open Library work key when present, else a noise-stripped title + primary author.
+// work key (a Google Books volume id) when present, else a noise-stripped title +
+// primary author. NOTE: unlike Open Library's old cross-edition work id, a Google
+// volume id is edition-level — a large-print/audio edition won't share one with the
+// standard edition, so those cases now rely more on the title+author fallback below.
 //
 // WATCH: numbered series volumes (Vol 1 vs Vol 2) are DIFFERENT works and must never
 // merge. The work key handles that for sourced data; the title fallback preserves
@@ -82,8 +85,8 @@ const groupTitle = (rawTitle: string): string => {
   return t.replace(/[^a-z0-9#]+/g, " ").replace(/\s+/g, " ").trim()
 }
 
-/** The work-level identity for a book-like record: the Open Library work key when
- *  present, else a noise-stripped title + primary author. Two editions of one work
+/** The work-level identity for a book-like record: the work key (a Google Books
+ *  volume id) when present, else a noise-stripped title + primary author. Two editions of one work
  *  share this; two series volumes do NOT. Exported so the genre-carousel cross-row
  *  dedup can track which work has already been shown. */
 export const editionKey = (b: EditionLike): string => {

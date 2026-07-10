@@ -1,6 +1,7 @@
 // Stable cross-shelf identity for a book, so the same title from different sources
-// (your shelf, a friend's shelf, a catalog result) collapses to one. Prefer the OL
-// work key, then a normalized ISBN, then title + first author.
+// (your shelf, a friend's shelf, a catalog result) collapses to one. Prefer the
+// work key (a Google Books volume id), then a normalized ISBN, then title + first
+// author.
 //
 // MUST stay in lockstep with convex/discover.ts `dedupeKey` (the server can't
 // import this client lib, so the logic is mirrored — change both together).

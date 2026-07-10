@@ -25,9 +25,9 @@ export type BookSearchResult = {
 }
 
 /** A fully enriched, cacheable book record — search-result fields plus the merged
- *  enrichment (`description`, `categories`, `subjects`, `authorBios`) the enrich-once
- *  pipeline (`convex/enrich.ts` → `/api/enrich`) writes to Convex so the detail view
- *  renders with no external calls. Defined in the engine, re-exported here for the UI. */
+ *  enrichment (`description`, `categories`, `subjects`) the enrich-once pipeline
+ *  (`convex/enrich.ts` → `/api/enrich`) writes to Convex so the detail view renders
+ *  with no external calls. Defined in the engine, re-exported here for the UI. */
 export type { EnrichedBook } from "@/convex/enrich"
 
 export const OWNERSHIP_LABELS: Record<Ownership, string> = {
@@ -43,10 +43,9 @@ export const READ_STATUS_LABELS: Record<ReadStatus, string> = {
   read: "Read",
 }
 
-/** Enriched reference data for a book — summary, subjects, author bios. Fetched
- *  on demand from `/api/book-info` (Open Library + Google Books); never stored. */
+/** Enriched reference data for a book — summary + subjects. Fetched on demand
+ *  from `/api/book-info` (Google Books); never stored. */
 export type BookInfo = {
   description?: string
   subjects: string[]
-  authors: { name: string; bio?: string }[]
 }

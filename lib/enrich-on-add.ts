@@ -45,14 +45,13 @@ export type ApplyEnrichmentArgs = {
   description?: string
   categories?: string[]
   subjects?: string[]
-  authorBios?: { name: string; bio?: string }[]
   averageRating?: number
   ratingsCount?: number
   embedding?: number[]
 }
 
 // Enrich-once: after a book lands on the shelf, fetch its full metadata
-// (description, subjects, author bios) once and patch it in. Best-effort and
+// (description, subjects) once and patch it in. Best-effort and
 // fire-and-forget — a slow/failed lookup never blocks the add or loses the book.
 // Skipped when there's nothing to look up by.
 export const enrichInBackground = async (
@@ -80,7 +79,6 @@ export const enrichInBackground = async (
       description: book.description,
       categories: book.categories,
       subjects: book.subjects,
-      authorBios: book.authorBios,
       averageRating: book.averageRating,
       ratingsCount: book.ratingsCount,
       embedding: book.embedding,

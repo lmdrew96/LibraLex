@@ -1,15 +1,16 @@
-import { isLikelyEnglish, normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
+import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
+import { fetchVolumeByIsbn } from "./googleBooks"
 
 /** A fully enriched, cacheable book record — search-result fields plus the merged
- *  enrichment (description/categories/subjects/authorBios) written to Convex so the
- *  detail view renders with no external calls. Defined here (the engine) and
- *  re-exported from lib/types for the frontend; self-contained so this module
- *  imports nothing outside convex/ (keeps the Convex bundler happy). */
+ *  enrichment (description/categories/subjects) written to Convex so the detail
+ *  view renders with no external calls. Defined here (the engine) and re-exported
+ *  from lib/types for the frontend; self-contained so this module imports nothing
+ *  outside convex/ (keeps the Convex bundler happy). */
 export type EnrichedBook = {
   title: string
   authors: string[]
   isbn?: string
-  coverId?: number
+  coverId?: number // DEPRECATED — legacy Open Library cover_i; never written here
   coverUrlFallback?: string
   firstPublishYear?: number
   pageCount?: number
@@ -17,243 +18,21 @@ export type EnrichedBook = {
   description?: string
   categories?: string[]
   subjects?: string[]
-  authorBios?: { name: string; bio?: string }[]
   averageRating?: number // Google Books community average (0–5)
   ratingsCount?: number // number of Google Books ratings behind that average
-  embedding?: number[] // Voyage vector (see convex/embed.ts) — not set by enrichBook itself
+  embedding?: number[] // Gemini vector (see convex/embed.ts) — not set by enrichBook itself
 }
 
-// The enrich-once engine. Merges Google Books (bibliographic) + Open Library
-// (cover, work subjects, author bios) into one normalized record, field-by-field,
-// taking the first non-empty value in each field's source-preference order. Runs
+// The enrich-once engine. A single Google Books ISBN lookup supplies everything —
+// biblio, cover, description, categories — normalized into one record. Runs
 // server-side (the /api/enrich route + the re-fetch action) so the result can be
 // cached on the Convex book record — after which the detail view needs zero
 // external calls. The Convex backfill reuses enrichBook directly.
 
-const GOOGLE_TIMEOUT_MS = 4000
-const OL_TIMEOUT_MS = 8000
-const MAX_BIO_AUTHORS = 2
-
-const UA = "LibraLex/0.11 (libra.adhdesigns.dev)"
-
-const fetchWithTimeout = async (url: string, ms: number): Promise<Response> => {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), ms)
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": UA, Accept: "application/json" },
-    })
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-// 4-digit year from a Google Books publishedDate ("2014", "2014-09-02").
-const parseYear = (publishedDate: string | undefined): number | undefined => {
-  const m = publishedDate?.match(/^\d{4}/)
-  return m ? Number(m[0]) : undefined
-}
-
 // Google Books lists only the writer for comics/graphic novels (drops the
-// artist), so author overwrite is suppressed for these — see mergeAuthors.
+// artist), so author overwrite is suppressed for these — see enrichBook.
 const isComicCategory = (categories: string[]): boolean =>
   categories.some((c) => /comics|graphic novel|manga/i.test(c))
-
-// OL text fields are either a plain string or `{ type, value }`.
-const asText = (v: unknown): string | undefined => {
-  if (typeof v === "string") return v
-  if (v && typeof v === "object" && "value" in v) {
-    const inner = (v as { value?: unknown }).value
-    if (typeof inner === "string") return inner
-  }
-  return undefined
-}
-
-// OL descriptions/bios are user-edited markdown rendered as plain text: drop the
-// dashed source footer, ref-links, and emphasis markers, then collapse whitespace.
-const cleanOpenLibrary = (raw: string): string =>
-  raw
-    .split(/\r?\n\s*-{3,}/)[0]
-    .replace(/\(\[source\]\[\d+\]\)/gi, "")
-    .replace(/\r?\n\s*\[\d+\]:\s*\S+/g, "")
-    .replace(/\[([^\]]+)\]\[\d+\]/g, "$1")
-    .replace(/\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\*+/g, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-
-// Google Books descriptions can carry light HTML — strip tags + decode entities.
-const stripHtml = (html: string): string =>
-  html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&(?:#39|apos);/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]+/g, " ")
-    .trim()
-
-type GoogleVolume = {
-  authors: string[]
-  year: number | undefined
-  pageCount: number | undefined
-  description: string | undefined
-  categories: string[]
-  thumbnail: string | undefined
-  isComic: boolean
-  averageRating: number | undefined
-  ratingsCount: number | undefined
-}
-
-const fetchGoogleVolumeByIsbn = async (isbn: string): Promise<GoogleVolume | null> => {
-  try {
-    const apiKey = process.env.GOOGLE_BOOKS_API_KEY
-    const keyParam = apiKey ? `&key=${apiKey}` : ""
-    const res = await fetchWithTimeout(
-      `https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&maxResults=1${keyParam}`,
-      GOOGLE_TIMEOUT_MS,
-    )
-    if (!res.ok) return null
-    const data = (await res.json()) as {
-      items?: Array<{
-        volumeInfo?: {
-          authors?: string[]
-          publishedDate?: string
-          pageCount?: number
-          description?: string
-          language?: string
-          categories?: string[]
-          imageLinks?: { thumbnail?: string; smallThumbnail?: string }
-          averageRating?: number
-          ratingsCount?: number
-        }
-      }>
-    }
-    const info = data.items?.[0]?.volumeInfo
-    if (!info) return null
-    const thumb = info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail
-    // Keep only an English summary: trust GB's language tag when present, and run
-    // the text guard as a backstop for the (common) case where it's absent. Biblio
-    // fields below are language-agnostic, so they're used regardless.
-    const gbDesc = info.description ? stripHtml(info.description) : undefined
-    const gbLangOk = !info.language || info.language.toLowerCase().startsWith("en")
-    // Only trust a rating that's backed by at least one vote — GB occasionally
-    // returns an averageRating with a 0/absent count.
-    const ratingsCount =
-      typeof info.ratingsCount === "number" && info.ratingsCount > 0 ? info.ratingsCount : undefined
-    return {
-      authors: info.authors ?? [],
-      year: parseYear(info.publishedDate),
-      pageCount: typeof info.pageCount === "number" && info.pageCount > 0 ? info.pageCount : undefined,
-      description: gbDesc && gbLangOk && isLikelyEnglish(gbDesc) ? gbDesc : undefined,
-      categories: info.categories ?? [],
-      thumbnail: thumb ? thumb.replace(/^http:\/\//, "https://") : undefined,
-      isComic: isComicCategory(info.categories ?? []),
-      averageRating:
-        ratingsCount !== undefined && typeof info.averageRating === "number"
-          ? info.averageRating
-          : undefined,
-      ratingsCount,
-    }
-  } catch {
-    return null
-  }
-}
-
-type OpenLibraryEdition = {
-  coverId: number | undefined
-  workKey: string | undefined
-  authors: string[]
-  year: number | undefined
-  pageCount: number | undefined
-}
-
-const fetchOpenLibraryByIsbn = async (isbn: string): Promise<OpenLibraryEdition | null> => {
-  try {
-    const res = await fetchWithTimeout(
-      `https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=1&fields=title,author_name,cover_i,first_publish_year,number_of_pages_median,key`,
-      OL_TIMEOUT_MS,
-    )
-    if (!res.ok) return null
-    const data = (await res.json()) as {
-      docs?: Array<{
-        author_name?: string[]
-        cover_i?: number
-        first_publish_year?: number
-        number_of_pages_median?: number
-        key?: string
-      }>
-    }
-    const doc = data.docs?.[0]
-    if (!doc) return null
-    return {
-      coverId: doc.cover_i,
-      workKey: doc.key,
-      authors: doc.author_name ?? [],
-      year: doc.first_publish_year,
-      pageCount: doc.number_of_pages_median,
-    }
-  } catch {
-    return null
-  }
-}
-
-// Exported for convex/catalog.ts, which only needs the description/subjects
-// half of this (no author bios, no GB/ISBN lookups — catalog candidates have
-// no ISBN anyway).
-export type OpenLibraryWork = { description: string | undefined; subjects: string[]; authorKeys: string[] }
-
-export const fetchOpenLibraryWork = async (workKey: string): Promise<OpenLibraryWork | null> => {
-  if (!/^\/works\/OL\w+W$/.test(workKey)) return null
-  try {
-    const res = await fetchWithTimeout(`https://openlibrary.org${workKey}.json`, OL_TIMEOUT_MS)
-    if (!res.ok) return null
-    const work = (await res.json()) as {
-      description?: unknown
-      subjects?: string[]
-      authors?: Array<{ author?: { key?: string } }>
-    }
-    const descRaw = asText(work.description)
-    const desc = descRaw ? cleanOpenLibrary(descRaw) : undefined
-    return {
-      // OL work records carry no language tag, so lean on the text guard to keep a
-      // Portuguese/Spanish summary off the shelf.
-      description: desc && isLikelyEnglish(desc) ? desc : undefined,
-      subjects: work.subjects ?? [],
-      authorKeys: (work.authors ?? [])
-        .map((a) => a.author?.key)
-        .filter((k): k is string => Boolean(k))
-        .slice(0, MAX_BIO_AUTHORS),
-    }
-  } catch {
-    return null
-  }
-}
-
-const fetchOpenLibraryAuthor = async (
-  key: string,
-): Promise<{ name: string; bio?: string } | null> => {
-  try {
-    const res = await fetchWithTimeout(`https://openlibrary.org${key}.json`, OL_TIMEOUT_MS)
-    if (!res.ok) return null
-    const a = (await res.json()) as { name?: string; bio?: unknown }
-    if (!a.name) return null
-    const bioRaw = asText(a.bio)
-    return { name: a.name, bio: bioRaw ? cleanOpenLibrary(bioRaw) : undefined }
-  } catch {
-    return null
-  }
-}
 
 // The first non-empty value wins, in order. `undefined`/empty arrays are skipped.
 const firstOf = <T>(...vals: (T | undefined)[]): T | undefined =>
@@ -262,48 +41,31 @@ const firstOf = <T>(...vals: (T | undefined)[]): T | undefined =>
 /**
  * Enrich a picked candidate into a complete, normalized, cacheable record.
  * `candidate` carries whatever the search/scan already knew (title, isbn,
- * workKey, and provisional authors/year/cover); this fills the gaps and prefers
- * the authoritative source per field. Pure-degrades: with no ISBN/workKey it just
- * normalizes and returns the candidate, so manual adds still work.
+ * workKey, and provisional authors/year/cover); this fills the gaps with a
+ * Google Books ISBN lookup. Pure-degrades: with no ISBN it just normalizes and
+ * returns the candidate, so manual adds still work.
  */
 export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook> => {
   const isbn = candidate.isbn
-  const [gb, ol] = await Promise.all([
-    isbn ? fetchGoogleVolumeByIsbn(isbn) : Promise.resolve(null),
-    isbn ? fetchOpenLibraryByIsbn(isbn) : Promise.resolve(null),
-  ])
+  const gb = isbn ? await fetchVolumeByIsbn(isbn) : null
 
-  const workKey = firstOf(candidate.workKey, ol?.workKey)
-  const work = workKey ? await fetchOpenLibraryWork(workKey) : null
-  const bios = work?.authorKeys.length
-    ? (await Promise.all(work.authorKeys.map(fetchOpenLibraryAuthor))).filter(
-        (b): b is { name: string; bio?: string } => b !== null,
-      )
-    : []
-
-  // Authors: GB wins for prose; for comics GB drops the artist, so keep the
-  // candidate/OL creators. Always run the normalizer.
-  const gbAuthors = gb && !gb.isComic && gb.authors.length > 0 ? gb.authors : undefined
-  const authors = normalizeAuthors(
-    firstOf(gbAuthors, candidate.authors, ol?.authors) ?? candidate.authors ?? [],
-  )
-
-  const coverId = firstOf(candidate.coverId, ol?.coverId)
+  // Authors: GB wins for prose; for comics GB drops the artist, so keep whatever
+  // the candidate already carried. Always run the normalizer.
+  const gbAuthors =
+    gb && !isComicCategory(gb.categories) && gb.authors.length > 0 ? gb.authors : undefined
+  const authors = normalizeAuthors(firstOf(gbAuthors, candidate.authors) ?? candidate.authors ?? [])
 
   return {
     title: candidate.title,
     authors,
     isbn,
-    coverId,
-    // GB thumbnail only when there's no OL cover_i to render from.
-    coverUrlFallback: coverId === undefined ? firstOf(candidate.coverUrlFallback, gb?.thumbnail) : undefined,
-    workKey,
-    firstPublishYear: sanitizeYear(firstOf(gb?.year, candidate.firstPublishYear, ol?.year)),
-    pageCount: firstOf(gb?.pageCount, candidate.pageCount, ol?.pageCount),
-    description: firstOf(gb?.description, work?.description),
+    coverUrlFallback: firstOf(candidate.coverUrlFallback, gb?.thumbnail),
+    workKey: firstOf(candidate.workKey, gb?.id),
+    firstPublishYear: sanitizeYear(firstOf(gb?.year, candidate.firstPublishYear)),
+    pageCount: firstOf(gb?.pageCount, candidate.pageCount),
+    description: gb?.description,
     categories: gb?.categories && gb.categories.length > 0 ? gb.categories : undefined,
-    subjects: work?.subjects.length ? normalizeSubjects(work.subjects) : undefined,
-    authorBios: bios.length > 0 ? bios : undefined,
+    subjects: gb?.categories?.length ? normalizeSubjects(gb.categories) : undefined,
     averageRating: gb?.averageRating,
     ratingsCount: gb?.ratingsCount,
   }

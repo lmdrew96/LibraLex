@@ -37,9 +37,10 @@ export type FriendCandidate = {
   endorsers: FriendEndorsement[]
 }
 
-// Stable identity for a book across shelves: prefer the OL work key, then a
-// normalized ISBN, then title+first-author. Two friends owning "the same book"
-// collapse to one candidate; a book already on your shelf is excluded by key.
+// Stable identity for a book across shelves: prefer the work key (a Google Books
+// volume id), then a normalized ISBN, then title+first-author. Two friends owning
+// "the same book" collapse to one candidate; a book already on your shelf is
+// excluded by key.
 // Works on any record carrying these bibliographic fields — a stored Doc OR an
 // inbound add payload — so the MCP add path can resolve an existing copy by the
 // SAME identity it dedupes recommendations against (convex/mcpData.ts).

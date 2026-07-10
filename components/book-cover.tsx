@@ -26,10 +26,13 @@ const placeholderText: Record<CoverSize, string> = {
 const OL_RESOLUTION: Record<CoverSize, "S" | "M" | "L"> = { S: "M", M: "L", L: "L" }
 
 /**
- * The one place cover URLs get built. Renders from Open Library's cover_i
- * (rate-limit-free) — never from ISBN. Tries the OL by-id image first, then the
- * Google Books fallback URL, then a styled spine-colored placeholder. The 2:3
- * box is always reserved so nothing shifts while the image loads.
+ * The one place cover URLs get built. Renders from Google Books' thumbnail URL —
+ * the primary and, for every book added post-migration, only cover source. A
+ * legacy `coverId` (Open Library cover_i) is tried as a fallback for books added
+ * before the migration that haven't been backfilled yet (see convex/backfill.ts);
+ * new books never populate it. Falls through to a styled spine-colored
+ * placeholder if neither resolves. The 2:3 box is always reserved so nothing
+ * shifts while the image loads.
  */
 export function BookCover({
   coverUrl,
@@ -39,18 +42,19 @@ export function BookCover({
   size = "M",
   className,
 }: BookCoverProps) {
-  // Ordered candidate sources: a user-uploaded cover wins, then OL by-id (with
-  // ?default=false so a missing cover 404s and triggers onError instead of
-  // returning a blank), then the Google Books fallback URL.
+  // Ordered candidate sources: a user-uploaded cover wins, then Google's
+  // thumbnail, then the legacy OL by-id image (with ?default=false so a missing
+  // cover 404s and triggers onError instead of returning a blank) for any
+  // not-yet-backfilled row.
   const sources = useMemo(() => {
     const list: string[] = []
     if (coverUrl) list.push(coverUrl)
+    if (coverUrlFallback) list.push(coverUrlFallback)
     if (coverId !== undefined) {
       list.push(
         `https://covers.openlibrary.org/b/id/${coverId}-${OL_RESOLUTION[size]}.jpg?default=false`,
       )
     }
-    if (coverUrlFallback) list.push(coverUrlFallback)
     return list
   }, [coverUrl, coverId, coverUrlFallback, size])
 

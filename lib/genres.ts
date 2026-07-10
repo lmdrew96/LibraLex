@@ -1,14 +1,14 @@
 // The curated genre list behind "browse by genre". Each entry maps a friendly
-// label the user picks in Settings to the Open Library subject phrase the catalog
-// discovery engine (`/api/discover`) queries — the raw OL subjects are too noisy
-// to show directly, so we hand-pick a small, recognizable set. We store the stable
-// `id` (not the label or subject) on the user profile, so labels/subjects can be
-// retuned without rewriting saved preferences.
+// label the user picks in Settings to the subject phrase the catalog discovery
+// engine (`/api/discover`, Google Books' `subject:` search) queries — raw catalog
+// subjects are too noisy to show directly, so we hand-pick a small, recognizable
+// set. We store the stable `id` (not the label or subject) on the user profile,
+// so labels/subjects can be retuned without rewriting saved preferences.
 
 export type Genre = {
   id: string
   label: string
-  subject: string // Open Library subject phrase, matched as a quoted term server-side
+  subject: string // catalog subject phrase, matched as a quoted term server-side
 }
 
 export const GENRES: Genre[] = [

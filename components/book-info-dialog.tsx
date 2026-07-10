@@ -26,8 +26,8 @@ export type BookInfoSubject = {
   pageCount?: number
 }
 
-/** Reusable book-info dialog: cover + summary + subjects + author bios, fetched
- *  lazily on open. Callers drop in context via the optional slots — `headerExtra`
+/** Reusable book-info dialog: cover + summary + subjects, fetched lazily on
+ *  open. Callers drop in context via the optional slots — `headerExtra`
  *  (beside the cover, e.g. a friend's rating/review) and `footer` (an action bar).
  *  With no headerExtra it falls back to the book's own publication meta.
  *  Uncontrolled by default; pass `open`/`onOpenChange` to drive it (e.g. to close
@@ -52,7 +52,6 @@ export function BookInfoDialog({
   const setOpen = onOpenChange ?? setInternalOpen
 
   const { data, loading } = useBookInfo({
-    workKey: open ? book.workKey : undefined,
     title: open ? book.title : "",
     author: open ? book.authors[0] : undefined,
     isbn: open ? book.isbn : undefined,

@@ -103,9 +103,11 @@ export const sanitizeYear = (year: number | undefined): number | undefined => {
 // common ones later), so this only bounds storage.
 const MAX_SUBJECTS = 30
 
-// Open Library mixes administrative/catalog tags into `subjects` that aren't
-// thematic and poison content similarity + the "shared: …" explanations. Drop
-// them. Exact matches are BISAC filler; substrings catch the tag families.
+// Catalog sources sometimes mix administrative/catalog tags into `subjects` that
+// aren't thematic and poison content similarity + the "shared: …" explanations
+// (a legacy of Open Library's subject data; kept as a defensive filter now that
+// subjects are Google Books categories, which are cleaner but not guaranteed
+// clean). Exact matches are BISAC filler; substrings catch the tag families.
 const NOISE_EXACT = new Set(["general", "nyt", "fiction in english", "import"])
 const NOISE_SUBSTRINGS = [
   "staff pick",
@@ -127,7 +129,7 @@ const isNoiseSubject = (s: string): boolean =>
   NOISE_SUBSTRINGS.some((n) => s.includes(n))
 
 /**
- * Clean an OL subject list for storage: split comma-bundled BISAC strings
+ * Clean a subject/category list for storage: split comma-bundled BISAC strings
  * ("Fiction, Family life, General" → 3 tokens), lowercase, trim, drop catalog
  * noise + empties, dedupe, cap. Shared by the enrich pipeline (convex/enrich) and
  * the backfill so subjects are stored identically regardless of source path.

@@ -2,6 +2,7 @@ import { httpRouter } from "convex/server"
 import { httpAction } from "./_generated/server"
 import { internal } from "./_generated/api"
 import type { ActionCtx } from "./_generated/server"
+import { fetchVolumesByQuery, type GoogleVolume } from "./googleBooks"
 
 /**
  * LibraLex's MCP door — lets Claude siblings (Coru on claude.ai, Cody in the CLI,
@@ -88,7 +89,7 @@ const TOOLS = [
   {
     name: "add_to_wishlist",
     description:
-      "Add a book to the user's wishlist by title (optionally with author to disambiguate). Best-effort enriches with cover/year from Open Library. Idempotent across the whole shelf: a book already on the wishlist isn't duplicated, and a copy already on another shelf (owned/library) is moved to the wishlist instead of creating a second row.",
+      "Add a book to the user's wishlist by title (optionally with author to disambiguate). Best-effort enriches with cover/year from Google Books. Idempotent across the whole shelf: a book already on the wishlist isn't duplicated, and a copy already on another shelf (owned/library) is moved to the wishlist instead of creating a second row.",
     inputSchema: {
       type: "object",
       properties: {
@@ -101,7 +102,7 @@ const TOOLS = [
   {
     name: "add_book",
     description:
-      "Add a book to a specific shelf by title — use this (not add_to_wishlist) when the user owns it, is reading it, has read it, or borrowed it from the library. Set ownership and optionally readStatus. Best-effort enriches with cover/year from Open Library. Idempotent across the whole shelf: a book already on that shelf isn't duplicated, and a copy already on a DIFFERENT shelf is moved to this one (not duplicated) — moving onto 'library' starts a 3-week loan; moving off 'library' clears the loan.",
+      "Add a book to a specific shelf by title — use this (not add_to_wishlist) when the user owns it, is reading it, has read it, or borrowed it from the library. Set ownership and optionally readStatus. Best-effort enriches with cover/year from Google Books. Idempotent across the whole shelf: a book already on that shelf isn't duplicated, and a copy already on a DIFFERENT shelf is moved to this one (not duplicated) — moving onto 'library' starts a 3-week loan; moving off 'library' clears the loan.",
     inputSchema: {
       type: "object",
       properties: {
@@ -179,7 +180,7 @@ const TOOLS = [
   {
     name: "search_books",
     description:
-      "Search the global book catalog (Open Library) by title/author/keyword — NOT the user's shelf. Use to find a book, confirm an exact title/author, or disambiguate before add_book. Returns up to ~8 matches with title, authors, year, pages, isbn.",
+      "Search the global book catalog (Google Books) by title/author/keyword — NOT the user's shelf. Use to find a book, confirm an exact title/author, or disambiguate before add_book. Returns up to ~8 matches with title, authors, year, pages, isbn.",
     inputSchema: {
       type: "object",
       properties: {
@@ -285,130 +286,73 @@ const daysUntilDue = (dueDate: number, now: number, tz?: string | null): number 
   return Math.round((due - today) / DAY_MS)
 }
 
-// ── Open Library enrichment for add_to_wishlist ──────────────────────────────────
+// ── Google Books enrichment for add_to_wishlist / add_book ───────────────────
 // A slim, fault-tolerant cousin of /api/search (which can't be shared across the
-// Next/Convex boundary). Top OL result only; any failure falls back to bare insert.
-const OL_FIELDS = "title,author_name,isbn,cover_i,first_publish_year,number_of_pages_median,key"
-
+// Next/Convex boundary). Top result only; any failure falls back to bare insert.
 type EnrichedBook = {
   title: string
   authors: string[]
   isbn?: string
-  coverId?: number
+  coverUrlFallback?: string
   workKey?: string
   firstPublishYear?: number
   pageCount?: number
 }
 
+const toEnriched = (v: GoogleVolume): EnrichedBook => ({
+  title: v.title,
+  authors: v.authors,
+  isbn: v.isbn,
+  coverUrlFallback: v.thumbnail,
+  workKey: v.id,
+  firstPublishYear: v.year,
+  pageCount: v.pageCount,
+})
+
 async function lookupBook(title: string, author?: string): Promise<EnrichedBook | null> {
-  const q = [title, author].filter(Boolean).join(" ")
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 6000)
+  const q = [`intitle:${title}`, author ? `inauthor:${author}` : ""].filter(Boolean).join("+")
   try {
-    const res = await fetch(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=1&fields=${OL_FIELDS}`,
-      {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "LibraLex-MCP/1.0 (libra.adhdesigns.dev)",
-          Accept: "application/json",
-        },
-      },
-    )
-    if (!res.ok) return null
-    const data = (await res.json()) as {
-      docs?: Array<{
-        title?: string
-        author_name?: string[]
-        isbn?: string[]
-        cover_i?: number
-        first_publish_year?: number
-        number_of_pages_median?: number
-        key?: string
-      }>
-    }
-    const doc = data.docs?.[0]
-    if (!doc?.title) return null
-    return {
-      title: doc.title,
-      authors: doc.author_name ?? (author ? [author] : []),
-      isbn: doc.isbn?.[0],
-      coverId: doc.cover_i,
-      workKey: doc.key,
-      firstPublishYear: doc.first_publish_year,
-      pageCount: doc.number_of_pages_median,
-    }
+    const volumes = await fetchVolumesByQuery(q, { maxResults: 1, langRestrict: "en", timeoutMs: 6000 })
+    return volumes[0] ? toEnriched(volumes[0]) : null
   } catch {
     return null
-  } finally {
-    clearTimeout(timer)
   }
 }
 
 // ── Catalog search (search_books + recommend_books fallback) ─────────────────
 // A richer cousin of lookupBook: many results, carries subjects for the recommender.
-const OL_SEARCH_FIELDS =
-  "key,title,author_name,isbn,cover_i,first_publish_year,number_of_pages_median,subject"
-
-type OLSearchDoc = {
-  key?: string
-  title?: string
-  author_name?: string[]
-  isbn?: string[]
-  cover_i?: number
-  first_publish_year?: number
-  number_of_pages_median?: number
-  subject?: string[]
-}
-
 type CatalogResult = {
   title: string
   authors: string[]
   isbn?: string
-  coverId?: number
+  coverUrlFallback?: string
   firstPublishYear?: number
   pageCount?: number
   workKey?: string
   subjects?: string[]
 }
 
-const mapSearchDoc = (d: OLSearchDoc): CatalogResult | null => {
-  if (!d.title) return null
-  return {
-    title: d.title,
-    authors: d.author_name ?? [],
-    isbn: d.isbn?.[0],
-    coverId: typeof d.cover_i === "number" && d.cover_i > 0 ? d.cover_i : undefined,
-    firstPublishYear: d.first_publish_year,
-    pageCount:
-      typeof d.number_of_pages_median === "number" ? d.number_of_pages_median : undefined,
-    workKey: d.key,
-    subjects: d.subject?.slice(0, 12),
-  }
-}
+const toCatalogResult = (v: GoogleVolume): CatalogResult => ({
+  title: v.title,
+  authors: v.authors,
+  isbn: v.isbn,
+  coverUrlFallback: v.thumbnail,
+  firstPublishYear: v.year,
+  pageCount: v.pageCount,
+  workKey: v.id,
+  subjects: v.categories.slice(0, 12),
+})
 
-/** Run one Open Library search.json query; [] on any failure (fault-tolerant). */
-async function olSearch(qs: string, timeoutMs = 9000): Promise<CatalogResult[]> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+/** Run one Google Books query; [] on any failure (fault-tolerant). */
+async function googleSearch(
+  query: string,
+  opts: { maxResults?: number; startIndex?: number; timeoutMs?: number } = {},
+): Promise<CatalogResult[]> {
   try {
-    const res = await fetch(
-      `https://openlibrary.org/search.json?${qs}&fields=${OL_SEARCH_FIELDS}`,
-      {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "LibraLex-MCP/1.0 (libra.adhdesigns.dev)",
-          Accept: "application/json",
-        },
-      },
-    )
-    if (!res.ok) return []
-    const data = (await res.json()) as { docs?: OLSearchDoc[] }
-    return (data.docs ?? []).map(mapSearchDoc).filter((r): r is CatalogResult => r !== null)
+    const volumes = await fetchVolumesByQuery(query, { langRestrict: "en", ...opts })
+    return volumes.map(toCatalogResult)
   } catch {
     return []
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -422,21 +366,29 @@ const catalogKey = (c: CatalogResult): string => {
   return `t:${c.title.trim().toLowerCase()}|${(c.authors[0] ?? "").trim().toLowerCase()}`
 }
 
-// Catalog candidates for taste subjects — mirrors /api/discover (readinglog rank,
-// English, 1980+ recency floor) so chat recs match the in-app Discover row.
+// Catalog candidates for taste subjects — mirrors /api/discover (English,
+// 1980+ recency floor, applied post-fetch since Google's query syntax has no
+// date-range operator) so chat recs match the in-app Discover row.
 async function catalogBySubjects(
   subjects: string[],
   need: number,
   exclude: Set<string>,
 ): Promise<CatalogResult[]> {
+  const yearFloor = 1980
   const yearCeil = new Date(Date.now()).getUTCFullYear() + 1
   const out: CatalogResult[] = []
   const seen = new Set<string>(exclude)
   for (const subject of subjects.slice(0, 2)) {
     if (out.length >= need) break
-    const q = `subject:"${subject.replace(/"/g, "")}" AND language:eng AND first_publish_year:[1980 TO ${yearCeil}]`
-    const cands = await olSearch(`q=${encodeURIComponent(q)}&sort=readinglog&limit=14`)
+    const cands = await googleSearch(`subject:"${subject.replace(/"/g, "")}"`, { maxResults: 14 })
     for (const c of cands) {
+      if (
+        c.firstPublishYear === undefined ||
+        c.firstPublishYear < yearFloor ||
+        c.firstPublishYear > yearCeil
+      ) {
+        continue
+      }
       const key = catalogKey(c)
       if (seen.has(key)) continue
       seen.add(key)
@@ -660,7 +612,7 @@ async function dispatch(
       const query = typeof args.query === "string" ? args.query.trim() : ""
       if (query.length < 2) throw new Error("search_books needs a query of at least 2 characters")
       const limit = clampInt(args.limit, 1, 10, 8)
-      const results = await olSearch(`q=${encodeURIComponent(query)}&limit=${limit}`)
+      const results = await googleSearch(query, { maxResults: limit })
       return textContent({ count: results.length, results })
     }
 
@@ -736,7 +688,7 @@ async function dispatch(
       const recipient = resolveFriend(friends, to)
       if (recipient.status !== "ok") return textContent(recipient)
 
-      // Prefer the sender's own copy (keeps their cover/biblio); else enrich from OL.
+      // Prefer the sender's own copy (keeps their cover/biblio); else enrich from Google Books.
       const snapshot = await ctx.runQuery(internal.mcpData.findBookSnapshotForUser, {
         userId,
         title,

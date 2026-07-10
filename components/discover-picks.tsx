@@ -20,12 +20,12 @@ const explain = (shared: string[], hasTarget: boolean): string => {
   return hasTarget ? `Shared: ${shared.join(", ")}` : `Popular in ${shared.join(", ")}`
 }
 
-/** Open-ended discovery from the Open Library catalog — books beyond your shelf
+/** Open-ended discovery from the Google Books catalog — books beyond your shelf
  *  and your friends', surfaced by subject. With `target` it's "more like this
  *  book"; without it, "matches your taste" (needs read history). Layered BENEATH
  *  friend picks: anything already on your shelf or a friend's is filtered out.
  *
- *  The catalog call is SLOW (Open Library's subjects endpoint runs several seconds),
+ *  The catalog call is SLOW (a live subject search can run several seconds),
  *  so it never blocks the page. Two deferral modes:
  *   • eager  — load proactively once the page is idle after paint (everything else
  *              renders first, then discovery fills in on its own). For the home shelf.

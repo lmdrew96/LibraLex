@@ -14,7 +14,7 @@ export type CatalogSearchResult = {
   workKey: string
   title: string
   authors: string[]
-  coverId?: number
+  coverUrlFallback?: string
   firstPublishYear?: number
   subjects?: string[]
   score: number
@@ -62,7 +62,7 @@ export const searchBooksByQuery = action({
         workKey: d.workKey,
         title: d.title,
         authors: d.authors,
-        coverId: d.coverId,
+        coverUrlFallback: d.coverUrlFallback,
         firstPublishYear: d.firstPublishYear,
         subjects: d.subjects,
         score: scoreById.get(d._id) ?? 0,

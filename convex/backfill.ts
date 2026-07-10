@@ -12,19 +12,21 @@ import { embedBookWithRetry } from "./embed"
 //   npx convex run backfill:enrichAllBooks '{"dryRun": false}'  # apply
 //
 // Reuses the same enrichBook engine as the add path, so a backfilled record is
-// identical to a freshly-enriched one: GB bibliographic (prose authors, edition
-// year, description, categories) + OL (cover_i, work subjects, author bios),
-// normalized; comics keep their stored creators. Also embeds (Gemini) any book
-// that doesn't have a vector yet, using the freshly-merged description/subjects.
+// identical to a freshly-enriched one: Google Books bibliographic (prose authors,
+// edition year, cover, description, categories), normalized; comics keep their
+// stored creators. Also embeds (Gemini) any book that doesn't have a vector yet,
+// using the freshly-merged description/subjects.
+//
+// Also the mechanism that clears every legacy row's Open Library coverId: since
+// enrichBook() never sets coverId anymore, `next.coverId` below always evaluates
+// to undefined, so running this (dryRun: false) patches coverId to undefined on
+// every row — the intended way to retire OL cover rendering after the Google
+// Books migration (see components/book-cover.tsx).
 //
 // Requires GOOGLE_BOOKS_API_KEY and GEMINI_API_KEY in the deployment env
 // (un-referrer-restricted):
 //   npx convex env set GOOGLE_BOOKS_API_KEY <key>
 //   npx convex env set GEMINI_API_KEY <key>
-
-const authorBiosValidator = v.optional(
-  v.array(v.object({ name: v.string(), bio: v.optional(v.string()) })),
-)
 
 export const _allBooks = internalQuery({
   args: {},
@@ -43,7 +45,6 @@ export const _applyEnrichment = internalMutation({
     description: v.optional(v.string()),
     categories: v.optional(v.array(v.string())),
     subjects: v.optional(v.array(v.string())),
-    authorBios: authorBiosValidator,
     averageRating: v.optional(v.number()),
     ratingsCount: v.optional(v.number()),
     embedding: v.optional(v.array(v.float64())),
@@ -61,9 +62,9 @@ type BackfillChange = {
   year?: { before: number | undefined; after: number | undefined }
   addedSubjects?: number
   addedDescription?: boolean
-  addedBios?: number
   addedRating?: boolean
   addedEmbedding?: boolean
+  clearedCoverId?: boolean
 }
 type BackfillResult = {
   dryRun: boolean
@@ -95,7 +96,10 @@ export const enrichAllBooks = internalAction({
       // Never blank a populated field when a flaky fetch comes back empty — the
       // enrichment sources are non-deterministic run-to-run, so re-runs must only
       // add/improve, never erase. (Biblio fields already fall back to the existing
-      // values inside enrichBook, so they can't go empty here.)
+      // values inside enrichBook, so they can't go empty here — EXCEPT coverId,
+      // which enrichBook() intentionally never sets anymore: `next.coverId` is
+      // always undefined, so this patches every legacy OL cover id to undefined,
+      // the mechanism that retires OL cover rendering post-migration.)
       const next = {
         authors: enriched.authors,
         coverId: enriched.coverId,
@@ -106,7 +110,6 @@ export const enrichAllBooks = internalAction({
         description: enriched.description ?? b.description,
         categories: enriched.categories ?? b.categories,
         subjects: enriched.subjects ?? b.subjects,
-        authorBios: enriched.authorBios ?? b.authorBios,
         averageRating: enriched.averageRating ?? b.averageRating,
         ratingsCount: enriched.ratingsCount ?? b.ratingsCount,
         embedding: b.embedding,
@@ -136,7 +139,6 @@ export const enrichAllBooks = internalAction({
         next.description !== b.description ||
         !sameJson(next.categories, b.categories) ||
         !sameJson(next.subjects, b.subjects) ||
-        !sameJson(next.authorBios, b.authorBios) ||
         next.averageRating !== b.averageRating ||
         next.ratingsCount !== b.ratingsCount ||
         next.embedding !== b.embedding
@@ -149,9 +151,9 @@ export const enrichAllBooks = internalAction({
         change.year = { before: b.firstPublishYear, after: next.firstPublishYear }
       if (!b.subjects?.length && next.subjects?.length) change.addedSubjects = next.subjects.length
       if (!b.description && next.description) change.addedDescription = true
-      if (!b.authorBios?.length && next.authorBios?.length) change.addedBios = next.authorBios.length
       if (b.averageRating === undefined && next.averageRating !== undefined) change.addedRating = true
       if (embeddingMissing && next.embedding) change.addedEmbedding = true
+      if (b.coverId !== undefined && next.coverId === undefined) change.clearedCoverId = true
       changes.push(change)
 
       if (!dryRun) {

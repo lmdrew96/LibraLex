@@ -21,10 +21,10 @@ const isPublicRoute = createRouteMatcher([
   "/icon(.*)", // /icon, /icon-192, /icon-512
   "/apple-icon(.*)",
   "/opengraph-image(.*)",
-  // Catalog discovery (popular books by subject from Open Library) is user-agnostic
+  // Catalog discovery (popular books by subject from Google Books) is user-agnostic
   // and carries zero user data, so it's public — which lets Clerk skip it (no session
   // cookie set on the response) so Vercel's CDN can edge-cache it. Auth-gating it would
-  // both bounce the cache and force a live OL call on every render.
+  // both bounce the cache and force a live Google call on every render.
   "/api/discover(.*)",
 ])
 

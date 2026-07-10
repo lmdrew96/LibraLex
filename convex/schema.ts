@@ -11,27 +11,39 @@ export default defineSchema({
   books: defineTable({
     userId: v.string(), // Clerk user id (identity.tokenIdentifier)
 
-    // ── bibliographic (from Open Library / Google Books) ──────────────────────
+    // ── bibliographic (Google Books) ──────────────────────────────────────────
     title: v.string(),
     authors: v.array(v.string()),
     isbn: v.optional(v.string()),
-    coverId: v.optional(v.number()), // Open Library cover_i — render covers from THIS (rate-limit-free)
-    coverUrlFallback: v.optional(v.string()), // Google Books thumbnail when coverId missing
+    // DEPRECATED — legacy Open Library cover_i. No longer written after the
+    // Google Books migration + backfill; kept for any row the backfill couldn't
+    // reach. book-cover.tsx checks coverUrlFallback first.
+    coverId: v.optional(v.number()),
+    coverUrlFallback: v.optional(v.string()), // Google Books thumbnail — the primary cover source (not just a fallback)
     coverStorageId: v.optional(v.id("_storage")), // user-uploaded cover (Convex file storage) — overrides the auto ones when set
-    workKey: v.optional(v.string()), // /works/OL...W stable id
+    // Google Books volume id (opaque, edition-level — NOT a work-level grouping id
+    // like the old OL /works/OL...W). Used for cross-shelf/candidate identity
+    // (lib/book-key.ts, convex/discover.ts) and community-rating grouping
+    // (by_workKey); falls back to isbn/title+author when absent.
+    workKey: v.optional(v.string()),
     firstPublishYear: v.optional(v.number()),
     pageCount: v.optional(v.number()),
 
-    // ── cached enrichment (enrich-once pipeline, see lib/enrich.ts) ────────────
-    // Populated once on add (merge of Google Books + Open Library, normalized) so
-    // the detail view renders with ZERO external calls. Refreshed by the manual
-    // "re-fetch metadata" action. All optional — older records backfill in.
-    description: v.optional(v.string()), // GB description, OL work description fallback
-    categories: v.optional(v.array(v.string())), // GB BISAC categories (coarse; drives the comic-guard + future filters)
-    subjects: v.optional(v.array(v.string())), // OL work subjects (granular — recommender fuel)
+    // ── cached enrichment (enrich-once pipeline, see convex/enrich.ts) ─────────
+    // Populated once on add (Google Books, normalized) so the detail view renders
+    // with ZERO external calls. Refreshed by the manual "re-fetch metadata"
+    // action. All optional — older records backfill in.
+    description: v.optional(v.string()), // Google Books description
+    categories: v.optional(v.array(v.string())), // Google Books BISAC categories (coarse; drives the comic-guard + future filters)
+    // Google Books categories (coarse — typically 1–2 BISAC-style tags, not OL's
+    // granular per-book tag list). Recommender fuel, weaker signal than before —
+    // see convex/embed.ts (description is the dominant embedding input).
+    subjects: v.optional(v.array(v.string())),
+    // DEPRECATED — Open Library author bios, feature dropped (Google Books has no
+    // author-biography data). Field kept for existing rows; no longer written.
     authorBios: v.optional(
       v.array(v.object({ name: v.string(), bio: v.optional(v.string()) })),
-    ), // OL author records
+    ),
     averageRating: v.optional(v.number()), // GB community average (0–5) — shown alongside the LibraLex community average
     ratingsCount: v.optional(v.number()), // number of GB ratings behind averageRating
 
@@ -104,7 +116,7 @@ export default defineSchema({
     mcpToken: v.optional(v.string()),
     // Genre ids the user picked in Settings (see lib/genres.ts) — drives the
     // "Popular in <genre>" browse rows on the Search page. Stored as our stable
-    // genre ids, not raw Open Library subjects, so the curated list can evolve
+    // genre ids, not raw catalog subject strings, so the curated list can evolve
     // without rewriting saved preferences. Absent/empty falls back to a default set.
     favoriteGenres: v.optional(v.array(v.string())),
     // Ownership shelves the user has hidden from friends (see convex/shelf,
@@ -191,39 +203,43 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_key", ["userId", "key"]),
 
-  // Precomputed catalog discovery — "popular books in <subject>" from Open Library,
-  // refreshed daily by a cron (convex/crons.ts → discoverCache.refreshAll). The
-  // /api/discover route reads this first and only falls back to a live OL fetch when a
-  // subject isn't cached, so the genre browse carousels never wait on OL at render.
-  // One row per subject; `candidates` is the work-deduped, readinglog-ranked pool.
+  // Precomputed catalog discovery — "popular books in <subject>" from Google
+  // Books, refreshed daily by a cron (convex/crons.ts → discoverCache.refreshAll).
+  // The /api/discover route reads this first and only falls back to a live Google
+  // fetch when a subject isn't cached, so the genre browse carousels never wait on
+  // an external call at render. One row per subject; `candidates` is the
+  // work-deduped, relevance-ranked pool.
   discoveryCache: defineTable({
-    subject: v.string(), // OL subject phrase, lowercased (mirrors lib/genres.ts subjects)
+    subject: v.string(), // subject phrase, lowercased (mirrors lib/genres.ts subjects)
     candidates: v.array(
       v.object({
+        // Google Books volume id (edition-level, not a true cross-edition work id).
         workKey: v.string(),
         title: v.string(),
         authors: v.array(v.string()),
-        coverId: v.optional(v.number()),
+        coverId: v.optional(v.number()), // DEPRECATED — legacy OL cover_i, unused for new candidates
+        coverUrlFallback: v.optional(v.string()), // Google Books thumbnail
         firstPublishYear: v.optional(v.number()),
-        subjects: v.optional(v.array(v.string())),
+        subjects: v.optional(v.array(v.string())), // Google Books categories (coarse)
       }),
     ),
     refreshedAt: v.number(),
   }).index("by_subject", ["subject"]),
 
   // A broad, embedded book catalog — independent of any user's shelf — seeded
-  // from Open Library across the curated genre list (convex/catalog.ts) and
+  // from Google Books across the curated genre list (convex/catalog.ts) and
   // powering "ask for a book" free-text search (convex/search.ts). Distinct
   // from `books` (which only has embeddings for books someone actually added):
   // this exists purely to be semantically searched, so an entry is only ever
   // inserted once it already has a vector — no partial/unembedded rows.
   catalogBooks: defineTable({
-    workKey: v.string(), // OL /works/OL...W — the identity for cross-genre dedup
+    workKey: v.string(), // Google Books volume id — the identity for cross-genre dedup
     title: v.string(),
     authors: v.array(v.string()),
-    coverId: v.optional(v.number()),
+    coverId: v.optional(v.number()), // DEPRECATED — legacy OL cover_i, unused for new rows
+    coverUrlFallback: v.optional(v.string()), // Google Books thumbnail
     firstPublishYear: v.optional(v.number()),
-    subjects: v.optional(v.array(v.string())),
+    subjects: v.optional(v.array(v.string())), // Google Books categories (coarse)
     description: v.optional(v.string()),
     embedding: v.array(v.float64()),
     seededAt: v.number(),

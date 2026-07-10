@@ -10,8 +10,8 @@ import { EmptyState } from "@/components/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 
 /** One author's catalog — reached by tapping an author's name on a book page.
- *  Fetches their works from Open Library (popular first) and renders the same
- *  tappable result list the Search page uses, so adding from here is identical. */
+ *  Fetches their works from Google Books and renders the same tappable result
+ *  list the Search page uses, so adding from here is identical. */
 export default function AuthorPage({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params)
   const author = decodeURIComponent(name)

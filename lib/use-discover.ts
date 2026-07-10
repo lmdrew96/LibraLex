@@ -2,21 +2,22 @@
 
 import { useEffect, useState } from "react"
 
-/** A catalog candidate from Open Library's subjects endpoint (`/api/discover`).
- *  Carries the work key + rich subjects the recommender scores; no ISBN (the
- *  subjects endpoint doesn't expose one — background enrichment fills the rest on
- *  add). Satisfies AddCandidate, so it flows straight into the add+enrich path. */
+/** A catalog candidate from Google Books' subject search (`/api/discover`).
+ *  Carries the work key + categories the recommender scores; no ISBN (a subject
+ *  search result doesn't reliably carry one — background enrichment fills the
+ *  rest on add). Satisfies AddCandidate, so it flows straight into the
+ *  add+enrich path. */
 export type DiscoveryCandidate = {
   workKey: string
   title: string
   authors: string[]
-  coverId?: number
+  coverUrlFallback?: string
   firstPublishYear?: number
   subjects?: string[]
 }
 
 // Cap on-demand pagination so a row that can never fill (very narrow taste) doesn't
-// fan out unbounded slow OL calls. Page 0 is the popular head; pages 1..MAX backfill.
+// fan out unbounded slow Google calls. Page 0 is the popular head; pages 1..MAX backfill.
 const MAX_PAGE = 4
 
 /** Fetch catalog discovery candidates for a set of subjects, with on-demand
@@ -67,7 +68,7 @@ export function useDiscover(subjects: string[]): {
     const ctrl = new AbortController()
     setLoading(true)
     // GET (not POST) so the response is cacheable at Vercel's edge — repeat
-    // (subject, page) views are served from the CDN, not the slow OL fan-out. One
+    // (subject, page) views are served from the CDN, not a live Google Books call. One
     // repeated ?subject= param per subject keeps phrases with punctuation intact.
     const qs = new URLSearchParams()
     for (const s of subjects) qs.append("subject", s)

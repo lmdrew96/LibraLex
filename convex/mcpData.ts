@@ -204,7 +204,7 @@ const resolveOne = (rows: Doc<"books">[], title: string, author?: string): Match
 // ({ status: "moved" }) instead of inserting a second row. Library moves capture a
 // checkout + default due date, and moving OFF the library shelf retires the loan
 // fields (mirrors books.updateBook). Bibliographic fields are best-effort — the door
-// enriches via Open Library first, falling back to bare title + author.
+// enriches via Google Books first, falling back to bare title + author.
 export const addBookForUser = internalMutation({
   args: {
     userId: v.string(),
@@ -279,7 +279,7 @@ export const addBookForUser = internalMutation({
     const base = {
       userId: args.userId,
       title: args.title,
-      // Normalize on write — the MCP door's OL enrichment emits junk too.
+      // Normalize on write — the MCP door's Google Books enrichment emits junk too.
       authors: normalizeAuthors(args.authors),
       isbn: args.isbn,
       coverId: args.coverId,
@@ -503,7 +503,7 @@ export const friendsForUser = internalQuery({
 
 // Best-effort snapshot of the sender's own copy of a book, to carry into a rec
 // (preserves their cover/biblio). Null when they don't have it — the door then
-// enriches from Open Library instead. First title match wins (snapshot quality,
+// enriches from Google Books instead. First title match wins (snapshot quality,
 // not a destructive action, so we don't insist on a unique hit).
 export const findBookSnapshotForUser = internalQuery({
   args: { userId: v.string(), title: v.string(), author: v.optional(v.string()) },

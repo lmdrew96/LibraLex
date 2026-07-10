@@ -62,9 +62,8 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
   // fetch only when those fields aren't populated yet — an older record before the
   // backfill, or a just-added book still mid-enrich. The hook no-ops on an empty
   // title, so a cached book makes no request.
-  const hasCachedInfo = Boolean(book?.description || book?.subjects?.length || book?.authorBios?.length)
+  const hasCachedInfo = Boolean(book?.description || book?.subjects?.length)
   const { data: fetchedInfo, loading: fetchedLoading } = useBookInfo({
-    workKey: hasCachedInfo ? undefined : book?.workKey,
     title: hasCachedInfo ? "" : (book?.title ?? ""),
     author: hasCachedInfo ? undefined : book?.authors?.[0],
     isbn: hasCachedInfo ? undefined : book?.isbn,
@@ -105,7 +104,6 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
         description: enriched.description,
         categories: enriched.categories,
         subjects: enriched.subjects,
-        authorBios: enriched.authorBios,
         averageRating: enriched.averageRating,
         ratingsCount: enriched.ratingsCount,
       })
@@ -419,7 +417,6 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
               ? ({
                   description: book.description,
                   subjects: book.subjects ?? [],
-                  authors: book.authorBios ?? [],
                 } satisfies BookInfoData)
               : fetchedInfo
           }

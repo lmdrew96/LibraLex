@@ -1,13 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import type { BookInfo as BookInfoData } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 
-/** Renders fetched book enrichment — summary, subject chips, author bios. Shows
- *  skeletons while loading and a quiet note when a book simply has no extra data. */
+/** Renders fetched book enrichment — summary + subject chips. Shows skeletons
+ *  while loading and a quiet note when a book simply has no extra data. */
 export function BookInfo({
   data,
   loading,
@@ -28,8 +27,7 @@ export function BookInfo({
 
   const hasDescription = Boolean(data?.description)
   const subjects = data?.subjects ?? []
-  const authorsWithBios = (data?.authors ?? []).filter((a) => a.bio)
-  const isEmpty = !hasDescription && subjects.length === 0 && authorsWithBios.length === 0
+  const isEmpty = !hasDescription && subjects.length === 0
 
   if (isEmpty) {
     return <p className="text-sm text-teal/90">No extra details found for this book.</p>
@@ -57,27 +55,6 @@ export function BookInfo({
               </li>
             ))}
           </ul>
-        </section>
-      )}
-
-      {authorsWithBios.length > 0 && (
-        <section>
-          <h3 className="mb-2 text-sm font-semibold text-teal">
-            About the author{authorsWithBios.length > 1 ? "s" : ""}
-          </h3>
-          <div className="flex flex-col gap-4">
-            {authorsWithBios.map((a) => (
-              <div key={a.name}>
-                <Link
-                  href={`/author/${encodeURIComponent(a.name)}`}
-                  className="mb-1 inline-block font-medium text-ink underline-offset-2 hover:text-teal hover:underline"
-                >
-                  {a.name}
-                </Link>
-                <Expandable text={a.bio!} clamp="line-clamp-4" />
-              </div>
-            ))}
-          </div>
         </section>
       )}
     </div>

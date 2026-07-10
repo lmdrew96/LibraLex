@@ -18,6 +18,7 @@ import type * as embed from "../embed.js";
 import type * as enrich from "../enrich.js";
 import type * as friends from "../friends.js";
 import type * as gemini from "../gemini.js";
+import type * as googleBooks from "../googleBooks.js";
 import type * as http from "../http.js";
 import type * as mcpAuth from "../mcpAuth.js";
 import type * as mcpData from "../mcpData.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   enrich: typeof enrich;
   friends: typeof friends;
   gemini: typeof gemini;
+  googleBooks: typeof googleBooks;
   http: typeof http;
   mcpAuth: typeof mcpAuth;
   mcpData: typeof mcpData;

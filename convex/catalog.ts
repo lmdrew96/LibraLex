@@ -1,89 +1,69 @@
 import { internalAction, internalMutation, internalQuery } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { v } from "convex/values"
-import { fetchOpenLibraryWork } from "./enrich"
+import { fetchVolumesByQuery, type GoogleVolume } from "./googleBooks"
 import { embedBookWithRetry } from "./embed"
 import { GENRE_SUBJECTS } from "./discoverCache"
 
 // One-off seed for the broad "ask for a book" catalog (convex/search.ts) —
-// independent of any user's shelf. Pulls a deep pool per genre from Open
-// Library (much deeper than discoverCache's carousel pool, which is
-// intentionally shallow), enriches each candidate with its OL work
-// description, embeds it (Gemini), and stores it. Cross-genre deduped by
-// workKey and resumable: re-running a genre skips anything already stored, so
-// a timed-out or interrupted run just picks up where it left off.
+// independent of any user's shelf. Pulls a deep pool per genre from Google Books
+// (much deeper than discoverCache's carousel pool, which is intentionally
+// shallow), embeds each candidate (Gemini) using the description Google's search
+// response already carries, and stores it. Cross-genre deduped by workKey and
+// resumable: re-running a genre skips anything already stored, so a timed-out or
+// interrupted run just picks up where it left off.
 //
 // Run once per genre from the CLI — get the list with:
 //   npx convex run catalog:_genreSubjects
 // then for each: npx convex run catalog:seedCatalogForGenre '{"subject": "fantasy"}'
 
-const UA = "LibraLex/0.40 (libra.adhdesigns.dev)"
-const OL_TIMEOUT_MS = 9000
-const PER_PAGE = 100
-const PAGES = 3 // up to 300 raw candidates/genre before dedup
+const PER_PAGE = 40 // Google Books caps maxResults at 40/request
+const PAGES = 8 // up to 320 raw candidates/genre before dedup
 const YEAR_FLOOR = 1980
 const MAX_SUBJECT_TOKENS = 14
-const SEARCH_FIELDS = "key,title,author_name,cover_i,first_publish_year,subject"
 const DEFAULT_MAX_NEW = 150 // cap on newly-embedded books per genre call
 
-type OLCandidate = {
+type Candidate = {
   workKey: string
   title: string
   authors: string[]
-  coverId?: number
+  coverUrlFallback?: string
   firstPublishYear?: number
   subjects?: string[]
+  description?: string
 }
 
-type OLDoc = {
-  key?: string
-  title?: string
-  author_name?: string[]
-  cover_i?: number
-  first_publish_year?: number
-  subject?: string[]
-}
+const toCandidate = (v: GoogleVolume): Candidate => ({
+  workKey: v.id,
+  title: v.title,
+  authors: v.authors,
+  coverUrlFallback: v.thumbnail,
+  firstPublishYear: v.year,
+  subjects: v.categories.slice(0, MAX_SUBJECT_TOKENS),
+  description: v.description,
+})
 
-const mapDoc = (d: OLDoc): OLCandidate | null => {
-  if (!d.key || !d.title) return null
-  return {
-    workKey: d.key,
-    title: d.title,
-    authors: d.author_name ?? [],
-    coverId: typeof d.cover_i === "number" && d.cover_i > 0 ? d.cover_i : undefined,
-    firstPublishYear: d.first_publish_year,
-    subjects: d.subject?.slice(0, MAX_SUBJECT_TOKENS),
-  }
-}
-
-// One OL page for (subject, page) — mirrors discoverCache's fetchPage, but this
-// module fetches far more pages/page-size since it's a one-off deep seed, not a
+// One Google Books page for (subject, page) — mirrors discoverCache's fetchPage,
+// but this module fetches far more pages since it's a one-off deep seed, not a
 // carousel cache refreshed daily.
-const fetchPage = async (subject: string, page: number, yearCeil: number): Promise<OLCandidate[]> => {
-  const q = `subject:"${subject.replace(/"/g, "")}" AND language:eng AND first_publish_year:[${YEAR_FLOOR} TO ${yearCeil}]`
-  const url =
-    `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}` +
-    `&sort=readinglog&limit=${PER_PAGE}&offset=${page * PER_PAGE}&fields=${SEARCH_FIELDS}`
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), OL_TIMEOUT_MS)
+const fetchPage = async (subject: string, page: number, yearCeil: number): Promise<Candidate[]> => {
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": UA, Accept: "application/json" },
+    const volumes = await fetchVolumesByQuery(`subject:"${subject.replace(/"/g, "")}"`, {
+      startIndex: page * PER_PAGE,
+      maxResults: PER_PAGE,
+      langRestrict: "en",
     })
-    if (!res.ok) return []
-    const data = (await res.json()) as { docs?: OLDoc[] }
-    return (data.docs ?? []).map(mapDoc).filter((c): c is OLCandidate => c !== null)
+    return volumes
+      .filter((v) => v.year !== undefined && v.year >= YEAR_FLOOR && v.year <= yearCeil)
+      .map(toCandidate)
   } catch {
     return []
-  } finally {
-    clearTimeout(timer)
   }
 }
 
-const fetchGenreDeep = async (subject: string): Promise<OLCandidate[]> => {
+const fetchGenreDeep = async (subject: string): Promise<Candidate[]> => {
   const yearCeil = new Date().getFullYear() + 1
-  const out: OLCandidate[] = []
+  const out: Candidate[] = []
   const seen = new Set<string>()
   for (let page = 0; page < PAGES; page++) {
     const batch = await fetchPage(subject, page, yearCeil)
@@ -128,7 +108,7 @@ export const _insertCatalogBook = internalMutation({
     workKey: v.string(),
     title: v.string(),
     authors: v.array(v.string()),
-    coverId: v.optional(v.number()),
+    coverUrlFallback: v.optional(v.string()),
     firstPublishYear: v.optional(v.number()),
     subjects: v.optional(v.array(v.string())),
     description: v.optional(v.string()),
@@ -161,15 +141,11 @@ export const seedCatalogForGenre = internalAction({
     let inserted = 0
     let failed = 0
     for (const c of fresh) {
-      const work = await fetchOpenLibraryWork(c.workKey)
-      const description = work?.description
-      const subjects = work?.subjects.length ? work.subjects.slice(0, MAX_SUBJECT_TOKENS) : c.subjects
-
       const embedding = await embedBookWithRetry({
         title: c.title,
         authors: c.authors,
-        description,
-        subjects,
+        description: c.description,
+        subjects: c.subjects,
       })
       if (!embedding) {
         failed++
@@ -180,10 +156,10 @@ export const seedCatalogForGenre = internalAction({
         workKey: c.workKey,
         title: c.title,
         authors: c.authors,
-        coverId: c.coverId,
+        coverUrlFallback: c.coverUrlFallback,
         firstPublishYear: c.firstPublishYear,
-        subjects,
-        description,
+        subjects: c.subjects,
+        description: c.description,
         embedding,
       })
       inserted++
