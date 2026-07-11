@@ -17,11 +17,17 @@ import { embedBookWithRetry } from "./embed"
 // stored creators. Also embeds (Gemini) any book that doesn't have a vector yet,
 // using the freshly-merged description/subjects.
 //
-// Also the mechanism that clears every legacy row's Open Library coverId: since
-// enrichBook() never sets coverId anymore, `next.coverId` below always evaluates
-// to undefined, so running this (dryRun: false) patches coverId to undefined on
-// every row — the intended way to retire OL cover rendering after the Google
-// Books migration (see components/book-cover.tsx).
+// Also the mechanism that clears every legacy row's Open Library coverId: this
+// mutation unconditionally patches coverId to undefined on every row it touches
+// — the intended way to retire OL cover rendering after the Google Books
+// migration (see components/book-cover.tsx). IMPORTANT: `undefined` is not a
+// valid Convex function-argument value — a caller passing `coverId: undefined`
+// through ctx.runMutation() has that key silently dropped before it reaches this
+// handler, so patch() never sees it and leaves the old value in place. coverId is
+// therefore NOT accepted as an arg at all; the clear is built directly inside the
+// handler's own db.patch() call, which is the one context where an explicit
+// `undefined` value is honored (it removes the field — see Convex's "Working
+// with undefined" docs).
 //
 // Requires GOOGLE_BOOKS_API_KEY and GEMINI_API_KEY in the deployment env
 // (un-referrer-restricted):
@@ -37,7 +43,6 @@ export const _applyEnrichment = internalMutation({
   args: {
     id: v.id("books"),
     authors: v.array(v.string()),
-    coverId: v.optional(v.number()),
     coverUrlFallback: v.optional(v.string()),
     workKey: v.optional(v.string()),
     firstPublishYear: v.optional(v.number()),
@@ -50,7 +55,7 @@ export const _applyEnrichment = internalMutation({
     embedding: v.optional(v.array(v.float64())),
   },
   handler: async (ctx, { id, ...fields }) => {
-    await ctx.db.patch(id, fields)
+    await ctx.db.patch(id, { ...fields, coverId: undefined })
   },
 })
 
@@ -96,13 +101,13 @@ export const enrichAllBooks = internalAction({
       // Never blank a populated field when a flaky fetch comes back empty — the
       // enrichment sources are non-deterministic run-to-run, so re-runs must only
       // add/improve, never erase. (Biblio fields already fall back to the existing
-      // values inside enrichBook, so they can't go empty here — EXCEPT coverId,
-      // which enrichBook() intentionally never sets anymore: `next.coverId` is
-      // always undefined, so this patches every legacy OL cover id to undefined,
-      // the mechanism that retires OL cover rendering post-migration.)
+      // values inside enrichBook, so they can't go empty here. coverId is the one
+      // exception — it's not part of `next` at all; _applyEnrichment clears it
+      // unconditionally in its own db.patch() call, since `undefined` can't
+      // survive as a cross-function argument — see that mutation's comment.)
+      const willClearCoverId = b.coverId !== undefined
       const next = {
         authors: enriched.authors,
-        coverId: enriched.coverId,
         coverUrlFallback: enriched.coverUrlFallback,
         workKey: enriched.workKey,
         firstPublishYear: enriched.firstPublishYear,
@@ -133,7 +138,7 @@ export const enrichAllBooks = internalAction({
         !sameJson(next.authors, b.authors) ||
         next.firstPublishYear !== b.firstPublishYear ||
         next.pageCount !== b.pageCount ||
-        next.coverId !== b.coverId ||
+        willClearCoverId ||
         next.coverUrlFallback !== b.coverUrlFallback ||
         next.workKey !== b.workKey ||
         next.description !== b.description ||
@@ -153,7 +158,7 @@ export const enrichAllBooks = internalAction({
       if (!b.description && next.description) change.addedDescription = true
       if (b.averageRating === undefined && next.averageRating !== undefined) change.addedRating = true
       if (embeddingMissing && next.embedding) change.addedEmbedding = true
-      if (b.coverId !== undefined && next.coverId === undefined) change.clearedCoverId = true
+      if (willClearCoverId) change.clearedCoverId = true
       changes.push(change)
 
       if (!dryRun) {
