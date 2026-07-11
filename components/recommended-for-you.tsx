@@ -52,7 +52,6 @@ export function RecommendedForYou({ books }: { books: BookWithCover[] }) {
               <div className="transition-transform group-hover:-translate-y-0.5">
                 <BookCover
                   coverUrl={book.coverUrl}
-                  coverId={book.coverId}
                   coverUrlFallback={book.coverUrlFallback}
                   title={book.title}
                   size="M"

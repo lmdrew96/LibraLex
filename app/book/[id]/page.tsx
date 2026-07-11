@@ -237,7 +237,6 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
         <div className="mx-auto w-44 shrink-0 sm:mx-0">
           <BookCover
             coverUrl={book.coverUrl}
-            coverId={book.coverId}
             coverUrlFallback={book.coverUrlFallback}
             title={book.title}
             size="L"

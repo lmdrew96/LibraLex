@@ -33,7 +33,6 @@ export function ReadNext({ books }: { books: BookWithCover[] }) {
         <div className="w-16 shrink-0 sm:w-20">
           <BookCover
             coverUrl={b.coverUrl}
-            coverId={b.coverId}
             coverUrlFallback={b.coverUrlFallback}
             title={b.title}
             size="M"

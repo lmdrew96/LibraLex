@@ -338,7 +338,7 @@ function SearchStep({
                 className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors hover:bg-lavender/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40"
               >
                 <div className="w-11 shrink-0">
-                  <BookCover coverId={b.coverId} coverUrlFallback={b.coverUrlFallback} title={b.title} size="S" />
+                  <BookCover coverUrlFallback={b.coverUrlFallback} title={b.title} size="S" />
                 </div>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-ink">{b.title}</span>
@@ -393,7 +393,7 @@ function OwnershipStep({
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-4">
         <div className="w-16 shrink-0">
-          <BookCover coverId={book.coverId} coverUrlFallback={book.coverUrlFallback} title={book.title} size="M" />
+          <BookCover coverUrlFallback={book.coverUrlFallback} title={book.title} size="M" />
         </div>
         <div className="min-w-0">
           <p className="font-medium text-ink">{book.title}</p>

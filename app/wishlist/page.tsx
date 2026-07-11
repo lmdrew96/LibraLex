@@ -89,7 +89,7 @@ function WishlistCard({ book }: { book: BookWithCover }) {
         href={`/book/${book._id}`}
         className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
       >
-        <BookCover coverUrl={book.coverUrl} coverId={book.coverId} coverUrlFallback={book.coverUrlFallback} title={book.title} size="M" />
+        <BookCover coverUrl={book.coverUrl} coverUrlFallback={book.coverUrlFallback} title={book.title} size="M" />
       </Link>
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-ink">{book.title}</p>

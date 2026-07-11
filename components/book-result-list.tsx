@@ -43,7 +43,6 @@ export function BookResultList({ results }: { results: BookSearchResult[] }) {
               >
                 <div className="w-14 shrink-0">
                   <BookCover
-                    coverId={b.coverId}
                     coverUrlFallback={b.coverUrlFallback}
                     title={b.title}
                     size="S"

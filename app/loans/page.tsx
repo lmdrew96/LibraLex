@@ -97,7 +97,7 @@ function LoanRow({ loan }: { loan: BookWithCover }) {
   return (
     <div className="flex flex-col gap-4 rounded-[24px] border border-lavender bg-card p-4 sm:flex-row">
       <Link href={`/book/${loan._id}`} className="w-16 shrink-0">
-        <BookCover coverUrl={loan.coverUrl} coverId={loan.coverId} coverUrlFallback={loan.coverUrlFallback} title={loan.title} size="M" />
+        <BookCover coverUrl={loan.coverUrl} coverUrlFallback={loan.coverUrlFallback} title={loan.title} size="M" />
       </Link>
 
       <div className="min-w-0 flex-1">

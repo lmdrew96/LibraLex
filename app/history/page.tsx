@@ -98,7 +98,6 @@ export default function HistoryPage() {
                   <div className="w-20 shrink-0">
                     <BookCover
                       coverUrl={book.coverUrl}
-                      coverId={book.coverId}
                       coverUrlFallback={book.coverUrlFallback}
                       title={book.title}
                       size="M"

@@ -108,7 +108,6 @@ export function RecommendDialog({
             <div className="w-14 shrink-0">
               <BookCover
                 coverUrl={book.coverUrl}
-                coverId={book.coverId}
                 coverUrlFallback={book.coverUrlFallback}
                 title={book.title}
                 size="S"

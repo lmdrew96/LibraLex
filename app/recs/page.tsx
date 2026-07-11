@@ -118,7 +118,6 @@ export default function RecsPage() {
                   >
                     <BookCover
                       coverUrl={rec.coverUrl}
-                      coverId={rec.coverId}
                       coverUrlFallback={rec.coverUrlFallback}
                       title={rec.title}
                       size="M"

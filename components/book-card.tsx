@@ -33,7 +33,6 @@ export function BookCard({ book, showDue = false }: { book: BookWithCover; showD
       <div className="relative transition-transform group-hover:-translate-y-0.5">
         <BookCover
           coverUrl={book.coverUrl}
-          coverId={book.coverId}
           coverUrlFallback={book.coverUrlFallback}
           title={book.title}
           size="M"

@@ -14,11 +14,9 @@ const nextConfig = {
     NEXT_PUBLIC_APP_VERSION: version,
   },
   images: {
-    // Open Library + Google Books cover hosts. <BookCover> uses a plain <img>
-    // (covers are external, sized by CSS), but allow these if we ever switch to
-    // next/image.
+    // Google Books cover hosts. <BookCover> uses a plain <img> (covers are
+    // external, sized by CSS), but allow these if we ever switch to next/image.
     remotePatterns: [
-      { protocol: "https", hostname: "covers.openlibrary.org" },
       { protocol: "https", hostname: "books.google.com" },
       { protocol: "https", hostname: "books.googleusercontent.com" },
     ],

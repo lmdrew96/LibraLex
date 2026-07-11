@@ -74,7 +74,6 @@ export function BookInfoDialog({
             <div className="w-24 shrink-0">
               <BookCover
                 coverUrl={book.coverUrl}
-                coverId={book.coverId}
                 coverUrlFallback={book.coverUrlFallback}
                 title={book.title}
                 size="M"
