@@ -10,6 +10,16 @@ import { isLikelyEnglish } from "./normalize"
 const UA = "LibraLex/0.41 (libra.adhdesigns.dev)"
 const VOLUMES_URL = "https://www.googleapis.com/books/v1/volumes"
 const DEFAULT_TIMEOUT_MS = 4000
+// Google's Books API intermittently 503s ("Service temporarily unavailable")
+// on an otherwise well-formed, keyed request that succeeds seconds later —
+// confirmed by hand against production ISBNs, and frequently enough (roughly
+// half of requests in one manual sample) that a single short retry isn't
+// reliable. A permanent miss (no match) comes back 200 with an empty `items`
+// array, so retrying a non-2xx never masks a real "not found." Escalating but
+// still bounded since /api/search hits this on every keystroke and has a 30s
+// Vercel budget: worst case here is 4 * DEFAULT_TIMEOUT_MS + 2100ms ≈ 18s.
+const FETCH_RETRY_ATTEMPTS = 4
+const FETCH_RETRY_DELAYS_MS = [300, 600, 1200]
 
 /** `&key=...` when GOOGLE_BOOKS_API_KEY is set, else "". Keyless requests work
  *  until the shared daily quota is hit (HTTP 429) — the key just raises it. */
@@ -18,15 +28,15 @@ export const googleApiKeyParam = (): string => {
   return apiKey ? `&key=${apiKey}` : ""
 }
 
-// Guards the whole request, headers *and* body — a bare `fetch()` timeout only
-// covers the wait for headers, so a connection that stalls mid-body (Google
-// being slow to stream, not just slow to respond) would hang past `ms` with no
-// protection and eventually trip Vercel's platform-level function timeout
-// instead of ours.
-export const fetchJsonWithTimeout = async (
+const fetchJsonOnce = async (
   url: string,
   ms: number,
 ): Promise<{ ok: boolean; status: number; json: unknown }> => {
+  // Guards the whole request, headers *and* body — a bare `fetch()` timeout
+  // only covers the wait for headers, so a connection that stalls mid-body
+  // (Google being slow to stream, not just slow to respond) would hang past
+  // `ms` with no protection and eventually trip Vercel's platform-level
+  // function timeout instead of ours.
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
   try {
@@ -39,6 +49,29 @@ export const fetchJsonWithTimeout = async (
   } finally {
     clearTimeout(timer)
   }
+}
+
+/** Retries a transient non-2xx or network/timeout failure a couple of times
+ *  before giving up — see FETCH_RETRY_ATTEMPTS above for why. */
+export const fetchJsonWithTimeout = async (
+  url: string,
+  ms: number,
+): Promise<{ ok: boolean; status: number; json: unknown }> => {
+  let lastResult: { ok: boolean; status: number; json: unknown } | undefined
+  let lastError: unknown
+  for (let attempt = 1; attempt <= FETCH_RETRY_ATTEMPTS; attempt++) {
+    try {
+      lastResult = await fetchJsonOnce(url, ms)
+      if (lastResult.ok) return lastResult
+    } catch (err) {
+      lastError = err
+    }
+    if (attempt < FETCH_RETRY_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, FETCH_RETRY_DELAYS_MS[attempt - 1]))
+    }
+  }
+  if (lastResult) return lastResult
+  throw lastError
 }
 
 // 4-digit year from a Google Books publishedDate ("2014", "2014-09-02").
@@ -200,4 +233,31 @@ export const fetchVolumesByQuery = async (
   if (!ok) throw new Error(`Google Books responded ${status}`)
   const items = (json as { items?: GoogleVolumeItem[] } | null)?.items ?? []
   return items.map(mapVolume).filter((v): v is GoogleVolume => v !== null)
+}
+
+const normalizeTitle = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+/** Fallback for books with no ISBN (or whose ISBN lookup misses) — a title+author
+ *  query with a loose title-overlap guard so a mismatched search result doesn't
+ *  attach the wrong book's cover/data. Same matching approach as
+ *  app/api/book-info/route.ts's fetchDescription. Fault-tolerant — null on
+ *  miss/error, never throws. */
+export const fetchVolumeByTitleAuthor = async (
+  title: string,
+  author: string | undefined,
+  opts: FetchOpts = {},
+): Promise<GoogleVolume | null> => {
+  try {
+    const q = [`intitle:${title}`, author ? `inauthor:${author}` : ""].filter(Boolean).join("+")
+    const volumes = await fetchVolumesByQuery(q, { maxResults: 5, ...opts })
+    const want = normalizeTitle(title)
+    const key = want.slice(0, 12)
+    const match = volumes.find((v) => {
+      const got = normalizeTitle(v.title)
+      return Boolean(got) && (got.includes(key) || want.includes(got.slice(0, 12)))
+    })
+    return match ?? null
+  } catch {
+    return null
+  }
 }

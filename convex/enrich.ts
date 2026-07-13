@@ -1,5 +1,5 @@
 import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
-import { fetchVolumeByIsbn } from "./googleBooks"
+import { fetchVolumeByIsbn, fetchVolumeByTitleAuthor } from "./googleBooks"
 
 /** A fully enriched, cacheable book record — search-result fields plus the merged
  *  enrichment (description/categories/subjects) written to Convex so the detail
@@ -47,7 +47,13 @@ const firstOf = <T>(...vals: (T | undefined)[]): T | undefined =>
  */
 export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook> => {
   const isbn = candidate.isbn
-  const gb = isbn ? await fetchVolumeByIsbn(isbn) : null
+  // ISBN-exact first; without an ISBN (or when it misses — a mismatched/unindexed
+  // edition code), fall back to a title+author search. Without this, any book
+  // that was catalogued pre-Google-Books-migration (matched by title/author, no
+  // ISBN stored) can never get a cover or other enrichment.
+  const gb =
+    (isbn ? await fetchVolumeByIsbn(isbn) : null) ??
+    (await fetchVolumeByTitleAuthor(candidate.title, candidate.authors[0], { langRestrict: "en" }))
 
   // Authors: GB wins for prose; for comics GB drops the artist, so keep whatever
   // the candidate already carried. Always run the normalizer.
