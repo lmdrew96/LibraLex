@@ -18,14 +18,24 @@ export const googleApiKeyParam = (): string => {
   return apiKey ? `&key=${apiKey}` : ""
 }
 
-export const fetchWithTimeout = async (url: string, ms: number): Promise<Response> => {
+// Guards the whole request, headers *and* body — a bare `fetch()` timeout only
+// covers the wait for headers, so a connection that stalls mid-body (Google
+// being slow to stream, not just slow to respond) would hang past `ms` with no
+// protection and eventually trip Vercel's platform-level function timeout
+// instead of ours.
+export const fetchJsonWithTimeout = async (
+  url: string,
+  ms: number,
+): Promise<{ ok: boolean; status: number; json: unknown }> => {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
   try {
-    return await fetch(url, {
+    const res = await fetch(url, {
       signal: controller.signal,
       headers: { "User-Agent": UA, Accept: "application/json" },
     })
+    const json = await res.json().catch(() => null)
+    return { ok: res.ok, status: res.status, json }
   } finally {
     clearTimeout(timer)
   }
@@ -162,13 +172,12 @@ export const fetchVolumeByIsbn = async (
 ): Promise<GoogleVolume | null> => {
   try {
     const qs = buildQuery(`isbn:${isbn}`, { ...opts, maxResults: 1 })
-    const res = await fetchWithTimeout(
+    const { ok, json } = await fetchJsonWithTimeout(
       `${VOLUMES_URL}?${qs}${googleApiKeyParam()}`,
       opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     )
-    if (!res.ok) return null
-    const data = (await res.json()) as { items?: GoogleVolumeItem[] }
-    const item = data.items?.[0]
+    if (!ok) return null
+    const item = (json as { items?: GoogleVolumeItem[] } | null)?.items?.[0]
     return item ? mapVolume(item) : null
   } catch {
     return null
@@ -184,11 +193,11 @@ export const fetchVolumesByQuery = async (
   opts: FetchOpts = {},
 ): Promise<GoogleVolume[]> => {
   const qs = buildQuery(query, opts)
-  const res = await fetchWithTimeout(
+  const { ok, status, json } = await fetchJsonWithTimeout(
     `${VOLUMES_URL}?${qs}${googleApiKeyParam()}`,
     opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   )
-  if (!res.ok) throw new Error(`Google Books responded ${res.status}`)
-  const data = (await res.json()) as { items?: GoogleVolumeItem[] }
-  return (data.items ?? []).map(mapVolume).filter((v): v is GoogleVolume => v !== null)
+  if (!ok) throw new Error(`Google Books responded ${status}`)
+  const items = (json as { items?: GoogleVolumeItem[] } | null)?.items ?? []
+  return items.map(mapVolume).filter((v): v is GoogleVolume => v !== null)
 }
