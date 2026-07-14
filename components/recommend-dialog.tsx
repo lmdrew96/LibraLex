@@ -114,7 +114,7 @@ export function RecommendDialog({
               />
             </div>
             <div className="min-w-0">
-              <p className="truncate font-medium text-ink">{book.title}</p>
+              <p className="font-display truncate font-medium text-ink">{book.title}</p>
               <p className="truncate text-sm text-teal">
                 {book.authors[0] ?? "Unknown author"}
               </p>

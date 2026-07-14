@@ -1,6 +1,6 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Fraunces, Space_Grotesk, Geist_Mono } from "next/font/google"
+import { Fraunces, Libre_Franklin, Geist_Mono } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 import { Toaster } from "sonner"
 import { ConvexClientProvider } from "@/components/providers/convex-client-provider"
@@ -22,9 +22,9 @@ const fraunces = Fraunces({
   axes: ["SOFT", "WONK", "opsz"],
 })
 
-const spaceGrotesk = Space_Grotesk({
+const libreFranklin = Libre_Franklin({
   subsets: ["latin"],
-  variable: "--font-space-grotesk",
+  variable: "--font-libre-franklin",
   weight: ["400", "500", "600"],
 })
 
@@ -61,8 +61,8 @@ export const viewport: Viewport = {
   // Mirrors the surface/background tokens in app/globals.css so the mobile
   // browser chrome matches the active theme.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#edf3f1" },
-    { media: "(prefers-color-scheme: dark)", color: "#161b27" },
+    { media: "(prefers-color-scheme: light)", color: "#ebeed5" },
+    { media: "(prefers-color-scheme: dark)", color: "#201c36" },
   ],
 }
 
@@ -75,10 +75,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       signUpFallbackRedirectUrl="/"
       afterSignOutUrl="/login"
     >
-      <html lang="en" suppressHydrationWarning>
-        <body
-          className={`${fraunces.variable} ${spaceGrotesk.variable} ${geistMono.variable} antialiased`}
-        >
+      <html
+        lang="en"
+        suppressHydrationWarning
+        className={`${fraunces.variable} ${libreFranklin.variable} ${geistMono.variable}`}
+      >
+        <body className="antialiased">
           <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
           <ThemeProvider>
             <ConvexClientProvider>

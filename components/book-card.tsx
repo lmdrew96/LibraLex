@@ -5,11 +5,10 @@ import { dueLabel, loanStatus } from "@/lib/loans"
 import { cn } from "@/lib/utils"
 import { BookCover } from "@/components/book-cover"
 
-// Three mutually-distinct dots within the cool palette. Reading (deep indigo)
-// and Read (light meadow) are separated on BOTH hue and luminance (~4:1) — the
-// cerulean "gold" token sat too close to meadow green to tell apart at 12px.
-// Luminance is the channel that survives color-vision deficiency, so the dark↔
-// light split matters as much as the hue.
+// Three mutually-distinct dots. Reading (deep violet) and Read (sage green)
+// are separated on BOTH hue and luminance (~5.6:1) so they read apart even
+// under color-vision deficiency, where luminance is the channel that survives —
+// the dark↔light split matters as much as the hue.
 const statusDot: Record<ReadStatus, string> = {
   unread: "bg-card ring-1 ring-teal/40",
   reading: "bg-indigo",
@@ -46,7 +45,7 @@ export function BookCard({ book, showDue = false }: { book: BookWithCover; showD
         />
       </div>
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink">{book.title}</p>
+        <p className="font-display truncate text-sm font-medium text-ink">{book.title}</p>
         <p className="truncate text-xs text-teal">{book.authors[0] ?? "Unknown author"}</p>
         {showDue && activeLoan && book.dueDate !== undefined && (
           <p className={cn("mt-0.5 text-xs", dueColor[loanStatus(book.dueDate)])}>

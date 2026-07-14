@@ -35,7 +35,7 @@ export function FriendBookCard({ book }: { book: SharedBook }) {
             />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-ink">{book.title}</p>
+            <p className="font-display truncate text-sm font-medium text-ink">{book.title}</p>
             <p className="truncate text-xs text-teal">
               {book.authors[0] ?? "Unknown author"}
             </p>

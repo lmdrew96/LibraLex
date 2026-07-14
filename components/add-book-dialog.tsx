@@ -341,7 +341,7 @@ function SearchStep({
                   <BookCover coverUrlFallback={b.coverUrlFallback} title={b.title} size="S" />
                 </div>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium text-ink">{b.title}</span>
+                  <span className="font-display block truncate font-medium text-ink">{b.title}</span>
                   <span className="block truncate text-sm text-teal">
                     {b.authors[0] ?? "Unknown author"}
                     {b.firstPublishYear ? ` · ${b.firstPublishYear}` : ""}
@@ -396,7 +396,7 @@ function OwnershipStep({
           <BookCover coverUrlFallback={book.coverUrlFallback} title={book.title} size="M" />
         </div>
         <div className="min-w-0">
-          <p className="font-medium text-ink">{book.title}</p>
+          <p className="font-display font-medium text-ink">{book.title}</p>
           <p className="text-sm text-teal">
             {book.authors[0] ?? "Unknown author"}
             {book.firstPublishYear ? ` · ${book.firstPublishYear}` : ""}

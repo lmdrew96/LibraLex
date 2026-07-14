@@ -49,7 +49,7 @@ export function BookResultList({ results }: { results: BookSearchResult[] }) {
                   />
                 </div>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium text-ink">{b.title}</span>
+                  <span className="font-display block truncate font-medium text-ink">{b.title}</span>
                   <span className="block truncate text-sm text-teal">
                     {b.authors[0] ?? "Unknown author"}
                     {b.firstPublishYear ? ` · ${b.firstPublishYear}` : ""}

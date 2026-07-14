@@ -92,7 +92,7 @@ function WishlistCard({ book }: { book: BookWithCover }) {
         <BookCover coverUrl={book.coverUrl} coverUrlFallback={book.coverUrlFallback} title={book.title} size="M" />
       </Link>
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink">{book.title}</p>
+        <p className="font-display truncate text-sm font-medium text-ink">{book.title}</p>
         <p className="truncate text-xs text-teal">{book.authors[0] ?? "Unknown author"}</p>
       </div>
       <div className="flex flex-col gap-1.5">

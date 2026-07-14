@@ -58,7 +58,7 @@ export function RecommendedForYou({ books }: { books: BookWithCover[] }) {
                 />
               </div>
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-ink">{book.title}</p>
+                <p className="font-display truncate text-sm font-medium text-ink">{book.title}</p>
                 <p className="line-clamp-2 text-[11px] leading-snug text-teal">{explanation}</p>
               </div>
             </Link>

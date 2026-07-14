@@ -8,7 +8,7 @@
 /* ============================================================
    LibraLex — ADHDesigns house theme (light, brand-canonical)
    Tokens mirror the ADHDesigns brand kit. Fonts are injected by
-   next/font in app/layout.tsx as --font-fraunces / -space-grotesk /
+   next/font in app/layout.tsx as --font-fraunces / -libre-franklin /
    -geist-mono, then mapped to brand font tokens below.
 
    Dark mode lives entirely in the `html.dark` block below: because every
@@ -16,38 +16,41 @@
    reassigning the token VALUES, not editing components.
    ============================================================ */
 @theme {
-  /* LibraLex palette — Meadow / Twilight / Cerulean (custom, ND-tuned).
-     Brand trio: Meadow Rush #a3caa2, Twilight Indigo #455079, Warm Cerulean #5598a2.
-     Text + active-fill roles are deepened from the cerulean so small text clears
-     WCAG AA on the light surface; gold + brick stay as functional state accents. */
+  /* LibraLex palette — Wisteria / Vellum / Sage (custom, literary, ND-tuned).
+     Brand trio: Sage Leaf #b0c49c, Twilight Wisteria #41386b, Dusk Lavender #b1b4c8.
+     Vellum #ebeed5 (the pale, warm "old paper" cream) is the page surface; Wisteria
+     Bloom #7a70ba is the mid-tone accent. Text + active-fill roles are deepened/
+     lightened from these five so small text clears WCAG AA on the light surface;
+     brick stays a deliberate, non-palette state accent (see below). */
 
   /* Brand trio (faithful) */
-  --color-meadow: #a3caa2;
-  --color-indigo: #455079;
-  --color-cerulean: #5598a2;
+  --color-meadow: #b0c49c;
+  --color-indigo: #41386b;
+  --color-cerulean: #b1b4c8;
 
   /* Mapped roles — existing token names so every component re-themes from here */
-  --color-teal: #2a5c68; /* deepened Warm Cerulean — secondary text, active fills, icons (AA on surface) */
-  --color-ink: #455079; /* Twilight Indigo — primary text + headings */
-  --color-surface: #edf3f1; /* pale cerulean-mint — calm page background */
-  --color-card: #ffffff;
-  --color-mint: #8dc2bd; /* soft cerulean-green — "calm" surfaces/buttons */
-  --color-green: #a3caa2; /* Meadow Rush — success, read status, confirmations */
-  --color-lavender: #cfe0dd; /* cool mint-gray — borders, muted fills, skeletons */
-  --color-purple: #5666a0; /* lighter twilight indigo — decorative */
-  --color-olive: #5b8f7e; /* muted spruce — spare accent */
+  --color-teal: #464e3e; /* deepened Sage Leaf (moss) — secondary text, active fills, icons (AA on surface) */
+  --color-ink: #41386b; /* Twilight Wisteria — primary text + headings */
+  --color-surface: #ebeed5; /* Vellum — calm, warm "old paper" page background */
+  --color-card: #f7f8ee; /* Vellum, lifted toward white — raised card surface */
+  --color-mint: #b0c49c; /* Sage Leaf — "calm" surfaces/buttons */
+  --color-green: #b0c49c; /* Sage Leaf — success, read status, confirmations */
+  --color-lavender: #b1b4c8; /* Dusk Lavender — borders, muted fills, skeletons */
+  --color-purple: #7a70ba; /* Wisteria Bloom — decorative */
+  --color-olive: #727f65; /* muted moss — spare accent */
 
-  /* State accents — fully cool. The "gold" token is repurposed as the bright
-     Warm Cerulean accent (ratings, "reading" status, status dots). Due-soon shifts
-     to periwinkle; overdue keeps a muted brick red as the single deliberate alert
-     — a cool palette has no natural "urgent" hue, and ND state-signaling needs one. */
-  --color-gold: #5598a2; /* Warm Cerulean — ratings stars, reading status */
-  --color-due-soon: #5666a0; /* periwinkle — loan "due soon" caution */
-  --color-overdue: #c2453d; /* muted brick — overdue alert (kept for clarity) */
+  /* State accents. The "gold" token is repurposed as the bright Wisteria Bloom
+     accent (ratings, "reading" status, status dots). Due-soon deepens the same
+     wisteria toward legibility; overdue keeps a muted brick red as the single
+     deliberate alert — this palette has no natural "urgent" hue, and ND
+     state-signaling needs one. */
+  --color-gold: #7a70ba; /* Wisteria Bloom — ratings stars, reading status */
+  --color-due-soon: #625a95; /* deepened wisteria — loan "due soon" caution */
+  --color-overdue: #af3e37; /* muted brick — overdue alert (kept for clarity) */
 
   /* Typography — next/font variables, with graceful fallbacks */
   --font-display: var(--font-fraunces), Georgia, serif;
-  --font-body: var(--font-space-grotesk), system-ui, sans-serif;
+  --font-body: var(--font-libre-franklin), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), "Fira Code", monospace;
 
   /* Radii */
@@ -67,35 +70,35 @@ html {
 }
 
 /* ============================================================
-   Dark theme — Twilight Night. Same brand trio, inverted for a calm dark
-   surface: deep Twilight Indigo base (never pure black), soft near-white text
-   (never pure white), accents brightened so they clear AA on the dark surface.
-   `html.dark` (specificity 0,1,1) outranks the @theme `:root`, so these win
-   regardless of source order. Only token VALUES change here.
+   Dark theme — Wisteria Night. Same five-color palette, inverted for a calm
+   dark surface: deep twilight-violet base (never pure black), warm Vellum
+   cream text (never pure white), accents brightened so they clear AA on the
+   dark surface. `html.dark` (specificity 0,1,1) outranks the @theme `:root`,
+   so these win regardless of source order. Only token VALUES change here.
    ============================================================ */
 html.dark {
   color-scheme: dark;
 
   /* Brand trio — brightened for legibility on a dark surface */
-  --color-meadow: #97c895;
-  --color-indigo: #7682b5;
-  --color-cerulean: #6fb6c0;
+  --color-meadow: #bccdab;
+  --color-indigo: #7a70ba;
+  --color-cerulean: #77778e;
 
   /* Mapped roles */
-  --color-teal: #82b9c2; /* light cerulean — secondary text, icons, active fills (AA on the dark surface) */
-  --color-ink: #e7ecf6; /* soft near-white indigo — primary text + headings */
-  --color-surface: #161b27; /* deep twilight navy — calm page background */
-  --color-card: #20283a; /* raised twilight — cards sit above the surface */
-  --color-mint: #3f7d77; /* deep cerulean-green — "calm" surfaces/buttons (pairs with light ink) */
-  --color-green: #93c692; /* Meadow — success, read status, confirmations */
-  --color-lavender: #323b50; /* mid twilight — borders, muted fills, skeletons */
-  --color-purple: #8b97cf; /* lightened twilight indigo — decorative */
-  --color-olive: #74a895; /* muted spruce — spare accent */
+  --color-teal: #b0c49c; /* Sage Leaf — secondary text, icons, active fills (AA on the dark surface) */
+  --color-ink: #ebeed5; /* Vellum — primary text + headings */
+  --color-surface: #201c36; /* deep twilight-wisteria — calm page background */
+  --color-card: #41386b; /* Twilight Wisteria — cards sit above the surface */
+  --color-mint: #616c56; /* deep moss — "calm" surfaces/buttons (pairs with light ink) */
+  --color-green: #bccdab; /* brightened Sage Leaf — success, read status, confirmations */
+  --color-lavender: #77778e; /* mid wisteria-gray — borders, muted fills, skeletons */
+  --color-purple: #958dc8; /* brightened Wisteria Bloom — decorative */
+  --color-olive: #8e9984; /* muted moss — spare accent */
 
   /* State accents */
-  --color-gold: #6fc0cb; /* bright cerulean — ratings stars, reading status (pops on dark) */
-  --color-due-soon: #8b97cf; /* periwinkle — loan "due soon" caution */
-  --color-overdue: #e06b63; /* brightened brick — overdue alert reads on dark */
+  --color-gold: #a29bcf; /* bright wisteria — ratings stars, reading status (pops on dark) */
+  --color-due-soon: #958dc8; /* brightened wisteria — loan "due soon" caution */
+  --color-overdue: #c77873; /* brightened brick — overdue alert reads on dark */
 
   /* Shadows — deeper so raised surfaces still separate on a dark background */
   --shadow-card: 0px 1px 2px rgba(0, 0, 0, 0.5), 0px 1px 1px rgba(0, 0, 0, 0.4);
@@ -114,7 +117,8 @@ body {
 h1,
 h2,
 h3,
-h4 {
+h4,
+.font-display {
   font-family: var(--font-display);
   font-variation-settings: "SOFT" 0, "WONK" 1;
   color: var(--color-ink);

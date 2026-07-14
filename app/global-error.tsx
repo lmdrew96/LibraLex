@@ -27,8 +27,8 @@ export default function GlobalError({
           alignItems: "center",
           justifyContent: "center",
           padding: "2rem",
-          background: "#edf3f1",
-          color: "#455079",
+          background: "#ebeed5",
+          color: "#41386b",
           fontFamily: "system-ui, -apple-system, sans-serif",
           textAlign: "center",
         }}
@@ -37,14 +37,14 @@ export default function GlobalError({
           <h1 style={{ fontSize: "1.75rem", margin: "0 0 0.5rem", fontWeight: 600 }}>
             Something broke
           </h1>
-          <p style={{ color: "#2a5c68", lineHeight: 1.5, margin: "0 0 1.5rem" }}>
+          <p style={{ color: "#464e3e", lineHeight: 1.5, margin: "0 0 1.5rem" }}>
             LibraLex hit an unexpected error. Try reloading — your shelf is safe.
           </p>
           <button
             onClick={() => reset()}
             style={{
-              background: "#455079",
-              color: "#edf3f1",
+              background: "#41386b",
+              color: "#ebeed5",
               border: "none",
               borderRadius: 9999,
               padding: "0.7rem 1.6rem",

@@ -104,7 +104,7 @@ export default function HistoryPage() {
                     />
                   </div>
                   <div className="min-w-0 flex-1 pt-1">
-                    <p className="font-medium text-ink">{book.title}</p>
+                    <p className="font-display font-medium text-ink">{book.title}</p>
                     <p className="text-sm text-teal">{book.authors[0] ?? "Unknown author"}</p>
                     {tab === "reading" && book.startedAt && (
                       <p className="mt-2 text-sm text-teal">
