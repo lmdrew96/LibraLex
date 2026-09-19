@@ -390,6 +390,82 @@ export const inboxForUser = internalQuery({
   },
 })
 
+// Opening the inbox from chat counts as reading it — clears the web unread badge,
+// same as visiting the Recs page (recs.markAllRead).
+export const markInboxReadForUser = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    const unread = await ctx.db
+      .query("recommendations")
+      .withIndex("by_recipient_status", (q) => q.eq("toUserId", userId).eq("status", "unread"))
+      .collect()
+    await Promise.all(unread.map((rec) => ctx.db.patch(rec._id, { status: "read" })))
+  },
+})
+
+// Accept or dismiss a friend's recommendation from chat, resolved by title (and
+// optionally the sender's name). Accept runs the same shared add path as the web
+// inbox (dedupe + enrich) and consumes the rec; dismiss just consumes it.
+export const actOnRecForUser = internalMutation({
+  args: {
+    userId: v.string(),
+    title: v.string(),
+    from: v.optional(v.string()),
+    action: v.union(v.literal("accept"), v.literal("dismiss")),
+    ownership: v.optional(v.union(v.literal("owned"), v.literal("wishlist"))),
+  },
+  handler: async (ctx, args) => {
+    const recs = await ctx.db
+      .query("recommendations")
+      .withIndex("by_recipient", (q) => q.eq("toUserId", args.userId))
+      .collect()
+    const withSender = await Promise.all(
+      recs.map(async (rec) => ({
+        rec,
+        from: (await profileFor(ctx, rec.fromUserId))?.displayName ?? "A friend",
+      })),
+    )
+    const qt = normalizeTitle(args.title)
+    const qf = args.from ? normalizeTitle(args.from) : undefined
+    const scoped = qf ? withSender.filter((r) => normalizeTitle(r.from).includes(qf)) : withSender
+    const exact = scoped.filter((r) => normalizeTitle(r.rec.title) === qt)
+    const matches = exact.length ? exact : scoped.filter((r) => normalizeTitle(r.rec.title).includes(qt))
+
+    if (matches.length === 0) return { status: "not_found" as const, title: args.title }
+    if (matches.length > 1) {
+      return {
+        status: "ambiguous" as const,
+        matches: matches.map((r) => ({ title: r.rec.title, authors: r.rec.authors, from: r.from })),
+      }
+    }
+
+    const { rec, from } = matches[0]
+    if (args.action === "dismiss") {
+      await ctx.db.delete(rec._id)
+      return { status: "dismissed" as const, title: rec.title, from }
+    }
+    const result = await addOrMoveBook(ctx, args.userId, {
+      title: rec.title,
+      authors: rec.authors,
+      isbn: rec.isbn,
+      coverId: rec.coverId,
+      coverUrlFallback: rec.coverUrlFallback,
+      workKey: rec.workKey,
+      firstPublishYear: rec.firstPublishYear,
+      pageCount: rec.pageCount,
+      ownership: args.ownership ?? "wishlist",
+    })
+    await ctx.db.delete(rec._id)
+    return {
+      status: "accepted" as const,
+      title: rec.title,
+      from,
+      shelf: result.ownership,
+      alreadyHad: result.status !== "added",
+    }
+  },
+})
+
 // The user's accepted friends as { userId, displayName } — the door matches a
 // chat-supplied name against these to resolve a recommendation recipient.
 export const friendsForUser = internalQuery({

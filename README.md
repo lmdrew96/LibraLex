@@ -42,7 +42,7 @@ convex/
   recs.ts               friend-sent recommendation inbox (send / add-to-shelf / dismiss)
   discover.ts           friend-candidate pool + "not interested" dismissals + shared rec helpers
   mcpData.ts            internal data layer for the MCP door (compact, chat-friendly shapes)
-  http.ts               the MCP server — hand-rolled JSON-RPC 2.0, per-user token auth (16 tools)
+  http.ts               the MCP server — hand-rolled JSON-RPC 2.0, per-user token auth (18 tools)
   mcpAuth.ts            mint / resolve / revoke the per-user MCP token
   enrich.ts · normalize.ts · backfill.ts   enrich-once pipeline + monotonic data cleanup
   users.ts              profile sync (display name, friend code, timezone, favorite genres)

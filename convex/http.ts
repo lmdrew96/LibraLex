@@ -204,8 +204,39 @@ const TOOLS = [
   {
     name: "recommendation_inbox",
     description:
-      "Books friends have recommended to the user, newest first — each with who sent it and any note. Answers 'did anyone recommend me a book?'. To add one, call add_book with the title.",
+      "Books friends have recommended to the user, newest first — each with who sent it and any note. Answers 'did anyone recommend me a book?'. Opening it marks them read. To act on one, call accept_recommendation or dismiss_recommendation.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "accept_recommendation",
+    description:
+      "Accept a friend's recommendation from the inbox: puts the book on the user's wishlist (or owned shelf) and removes it from the inbox. Use for 'add Maya's rec', 'yes, I want the book Sam sent'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Title of the recommended book." },
+        from: { type: "string", description: "The friend who sent it, to disambiguate." },
+        ownership: {
+          type: "string",
+          enum: ["wishlist", "owned"],
+          description: "Where to put it. Defaults to wishlist; use owned if they already have a copy.",
+        },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "dismiss_recommendation",
+    description:
+      "Dismiss a friend's recommendation without adding it (removes it from the inbox). Use for 'not interested in the book Maya sent'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Title of the recommended book." },
+        from: { type: "string", description: "The friend who sent it, to disambiguate." },
+      },
+      required: ["title"],
+    },
   },
   {
     name: "send_recommendation",
@@ -700,7 +731,23 @@ async function dispatch(
 
     case "recommendation_inbox": {
       const recommendations = await ctx.runQuery(internal.mcpData.inboxForUser, { userId })
+      await ctx.runMutation(internal.mcpData.markInboxReadForUser, { userId })
       return textContent({ count: recommendations.length, recommendations })
+    }
+
+    case "accept_recommendation":
+    case "dismiss_recommendation": {
+      const title = reqTitle(args, name)
+      const result = await ctx.runMutation(internal.mcpData.actOnRecForUser, {
+        userId,
+        title,
+        from: optStr(args.from),
+        action: name === "accept_recommendation" ? "accept" : "dismiss",
+        ownership: asEnum(args.ownership, ["owned", "wishlist"] as const),
+      })
+      return textContent(
+        result.status === "accepted" || result.status === "dismissed" ? { ok: true, ...result } : result,
+      )
     }
 
     case "send_recommendation": {
