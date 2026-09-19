@@ -71,13 +71,24 @@ export const hiddenShelfSet = (p: Doc<"users"> | null): Set<Shelf> =>
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // The caller's own profile (incl. their shareable friend code). Null until
-// ensureProfile has run for this identity.
+// ensureProfile has run for this identity. Deliberately a trimmed shape, not the
+// raw row: tasteVector is ~12KB of floats this live subscription would re-send
+// on every change, and mcpToken is a bearer secret (Settings reads it through
+// mcpAuth.getMyMcpToken, only where it's shown).
 export const getMyProfile = query({
   args: {},
   handler: async (ctx) => {
     const userId = await getUserId(ctx)
     if (!userId) return null
-    return await profileFor(ctx, userId)
+    const p = await profileFor(ctx, userId)
+    if (!p) return null
+    return {
+      ...toPublicProfile(p),
+      friendCode: p.friendCode,
+      timeZone: p.timeZone,
+      favoriteGenres: p.favoriteGenres,
+      hiddenShelves: p.hiddenShelves,
+    }
   },
 })
 
