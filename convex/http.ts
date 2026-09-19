@@ -3,6 +3,7 @@ import { httpAction } from "./_generated/server"
 import { internal } from "./_generated/api"
 import type { ActionCtx } from "./_generated/server"
 import { fetchVolumesByQuery, type GoogleVolume } from "./googleBooks"
+import { LOAN_PERIOD_DAYS } from "./util"
 
 /**
  * LibraLex's MCP door — lets Claude siblings (Coru on claude.ai, Cody in the CLI,
@@ -645,7 +646,7 @@ async function dispatch(
       const title = reqTitle(args, "renew_loan")
       const author = optStr(args.author)
       const days =
-        typeof args.days === "number" && args.days > 0 ? Math.round(args.days) : 21
+        typeof args.days === "number" && args.days > 0 ? Math.round(args.days) : LOAN_PERIOD_DAYS
       const now = Date.now()
       const newDueDate = now + days * DAY_MS
       const result = await ctx.runMutation(internal.mcpData.renewLoanForUser, {
@@ -845,7 +846,13 @@ const mcp = httpAction(async (ctx, req) => {
       const result = await dispatch(ctx, name, args ?? {}, userId)
       return rpcOk(id, result)
     } catch (e) {
-      return rpcErr(id, -32603, e instanceof Error ? e.message : "Internal error")
+      // Tool failures (bad args, not found…) are reported INSIDE a successful
+      // result with isError, per the MCP spec, so the model sees the message and
+      // can correct itself. JSON-RPC errors are reserved for protocol problems.
+      return rpcOk(id, {
+        content: [{ type: "text", text: e instanceof Error ? e.message : "Internal error" }],
+        isError: true,
+      })
     }
   }
 

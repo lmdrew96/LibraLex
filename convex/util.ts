@@ -19,9 +19,10 @@ export const requireUserId = async (
   return userId
 }
 
-// Default library loan period: 3 weeks. SINGLE server-side source — every code
-// path that stamps a due date imports this (books.addBook/checkoutBook,
-// mcpData.addBookForUser); it's a default, not a law (renewLoan lets the user
-// override). The client mirrors it as lib/loans.LOAN_PERIOD_MS — the two runtimes
-// can't share a module, so keep the day count identical if it ever changes.
-export const LOAN_PERIOD_MS = 21 * 24 * 60 * 60 * 1000
+// Default library loan period: 3 weeks. The SINGLE source for both runtimes —
+// every server path that stamps a due date (shelfAdd, books.checkoutBook, the MCP
+// renew_loan default) and the client (lib/loans re-exports it) import this. This
+// module only has type-level imports, so it's safe in the browser bundle too.
+// It's a default, not a law (renewLoan lets the user override).
+export const LOAN_PERIOD_DAYS = 21
+export const LOAN_PERIOD_MS = LOAN_PERIOD_DAYS * 24 * 60 * 60 * 1000
