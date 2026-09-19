@@ -82,6 +82,19 @@ export default function SettingsPage() {
   const mcpUrl = token ? `${origin}/mcp/${token}` : ""
 
   const onGenerate = async () => {
+    // Regenerating replaces the token, which breaks any Claude already using the
+    // old URL — same consequence as Revoke, so it asks the same way.
+    if (
+      token &&
+      !(await confirm({
+        title: "Replace your MCP link?",
+        message:
+          "Your current Claude connector will stop working until you paste the new URL into it.",
+        confirmLabel: "Replace link",
+      }))
+    ) {
+      return
+    }
     setBusy(true)
     try {
       await generate({})
