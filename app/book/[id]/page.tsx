@@ -551,7 +551,7 @@ function Segmented({
   label: string
 }) {
   return (
-    <div role="group" aria-label={label} className="inline-flex rounded-full border border-lavender bg-card p-1">
+    <div role="group" aria-label={label} className="inline-flex max-w-full flex-wrap rounded-[22px] border border-lavender bg-card p-1">
       {options.map((opt) => (
         <button
           key={opt.value}

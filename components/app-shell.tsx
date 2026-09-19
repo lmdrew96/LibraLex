@@ -95,7 +95,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <UserButton />
           </div>
         </div>
-        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-3 pb-2">
+        {/* On phones the rail can overflow; the right-edge fade hints that it scrolls. */}
+        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-3 pb-2 [mask-image:linear-gradient(to_right,black_85%,transparent)] sm:[mask-image:none]">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href)
             const badge = badgeFor(href)
