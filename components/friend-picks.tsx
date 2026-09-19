@@ -81,7 +81,10 @@ export function FriendPicks({
     }))
   } else {
     if (!vectorPicks || vectorPicks.length === 0) return null
-    const visible = vectorPicks.filter((c) => !dismissedSet.has(bookKey(c)))
+    // The vector picks are a one-shot fetch, not a live query, so a book added from
+    // this row (or anywhere) must be filtered out against the live library here.
+    const mine = new Set(library.map(bookKey))
+    const visible = vectorPicks.filter((c) => !dismissedSet.has(bookKey(c)) && !mine.has(bookKey(c)))
     if (visible.length === 0) return null
     const ranked = visible
       .map((c) => ({ ...c, boosted: c.score * friendBoost(c.endorsers) }))
