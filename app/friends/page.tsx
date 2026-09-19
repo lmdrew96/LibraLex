@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { Check, ChevronRight, Copy, Link2, UserPlus, Users, X } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import { undoToast } from "@/lib/undo-toast"
 import type { Id } from "@/convex/_generated/dataModel"
 import { AppShell } from "@/components/app-shell"
 import { EmptyState } from "@/components/empty-state"
@@ -69,12 +70,25 @@ export default function FriendsPage() {
     }
   }
 
-  const decline = async (friendshipId: Id<"friendships">) => {
-    try {
-      await respond({ friendshipId, accept: false })
-    } catch {
-      toast.error("Couldn't decline.")
-    }
+  // Declines hide instantly; the delete only commits once the Undo window closes.
+  const [declined, setDeclined] = useState<Set<string>>(new Set())
+  const setDeclinedFlag = (id: string, on: boolean): void =>
+    setDeclined((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  const pendingIncoming = incoming?.filter((req) => !declined.has(req.friendshipId))
+
+  const decline = (friendshipId: Id<"friendships">, name: string): void => {
+    setDeclinedFlag(friendshipId, true)
+    undoToast({
+      message: `Declined ${name}'s request.`,
+      commit: () => respond({ friendshipId, accept: false }),
+      onUndo: () => setDeclinedFlag(friendshipId, false),
+      errorMessage: "Couldn't decline.",
+    })
   }
 
   const unfriend = async (friendshipId: Id<"friendships">, name: string) => {
@@ -160,13 +174,13 @@ export default function FriendsPage() {
       </section>
 
       {/* Incoming requests */}
-      {incoming && incoming.length > 0 && (
+      {pendingIncoming && pendingIncoming.length > 0 && (
         <section className="mb-6">
           <h2 className="mb-3 text-sm font-semibold text-teal">
-            Requests · {incoming.length}
+            Requests · {pendingIncoming.length}
           </h2>
           <ul className="flex flex-col gap-2">
-            {incoming.map((req) => (
+            {pendingIncoming.map((req) => (
               <li
                 key={req.friendshipId}
                 className="flex items-center gap-3 rounded-2xl border border-lavender bg-card p-3"
@@ -181,7 +195,7 @@ export default function FriendsPage() {
                   Accept
                 </Button>
                 <button
-                  onClick={() => decline(req.friendshipId)}
+                  onClick={() => decline(req.friendshipId, req.displayName)}
                   aria-label={`Decline ${req.displayName}`}
                   className="rounded-full p-2 text-teal transition-colors hover:bg-lavender focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
                 >

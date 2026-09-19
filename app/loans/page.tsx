@@ -85,7 +85,22 @@ function LoanRow({ loan }: { loan: BookWithCover }) {
   const doReturn = async () => {
     try {
       await returnBook({ id: loan._id })
-      toast.success(`Returned “${loan.title}”.`)
+      const dueDate = loan.dueDate
+      toast.success(`Returned “${loan.title}”.`, {
+        // renewLoan also clears `returned`, so re-applying the original due date
+        // restores the loan exactly as it was.
+        action:
+          dueDate !== undefined
+            ? {
+                label: "Undo",
+                onClick: () => {
+                  renewLoan({ id: loan._id, newDueDate: dueDate }).catch(() =>
+                    toast.error("Couldn't undo — re-add the loan from the book page."),
+                  )
+                },
+              }
+            : undefined,
+      })
     } catch {
       toast.error("Couldn't mark it returned. Try again.")
     }

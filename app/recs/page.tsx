@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { formatDistanceToNow } from "date-fns"
 import { Sparkles, X } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import { undoToast } from "@/lib/undo-toast"
 import type { Id } from "@/convex/_generated/dataModel"
 import { AppShell } from "@/components/app-shell"
 import { AskForABook } from "@/components/ask-for-a-book"
@@ -45,12 +46,25 @@ export default function RecsPage() {
     }
   }
 
-  const remove = async (recId: Id<"recommendations">) => {
-    try {
-      await dismiss({ recId })
-    } catch {
-      toast.error("Couldn't dismiss that rec.")
-    }
+  // Dismissed recs hide instantly; the delete only commits once the Undo window closes.
+  const [hiddenRecs, setHiddenRecs] = useState<Set<string>>(new Set())
+  const setHidden = (recId: string, hidden: boolean): void =>
+    setHiddenRecs((prev) => {
+      const next = new Set(prev)
+      if (hidden) next.add(recId)
+      else next.delete(recId)
+      return next
+    })
+  const visibleInbox = inbox?.filter((rec) => !hiddenRecs.has(rec._id))
+
+  const remove = (recId: Id<"recommendations">, title: string): void => {
+    setHidden(recId, true)
+    undoToast({
+      message: `Dismissed “${title}”.`,
+      commit: () => dismiss({ recId }),
+      onUndo: () => setHidden(recId, false),
+      errorMessage: "Couldn't dismiss that rec.",
+    })
   }
 
   return (
@@ -82,7 +96,7 @@ export default function RecsPage() {
         Sent to you by friends
       </h2>
 
-      {inbox === undefined ? (
+      {visibleInbox === undefined ? (
         <ul className="flex flex-col gap-3">
           {[0, 1, 2].map((i) => (
             <li key={i} className="flex gap-4 rounded-[24px] border border-lavender bg-card p-4">
@@ -95,7 +109,7 @@ export default function RecsPage() {
             </li>
           ))}
         </ul>
-      ) : inbox.length === 0 ? (
+      ) : visibleInbox.length === 0 ? (
         <EmptyState
           icon={Sparkles}
           title="Nothing sent yet"
@@ -103,7 +117,7 @@ export default function RecsPage() {
         />
       ) : (
         <ul className="flex flex-col gap-3">
-          {inbox.map((rec) => (
+          {visibleInbox.map((rec) => (
             <li
               key={rec._id}
               className="relative flex gap-4 rounded-[24px] border border-lavender bg-card p-4"
@@ -164,7 +178,7 @@ export default function RecsPage() {
               </div>
 
               <button
-                onClick={() => remove(rec._id)}
+                onClick={() => remove(rec._id, rec.title)}
                 aria-label={`Dismiss recommendation of ${rec.title}`}
                 className="absolute right-3 top-3 rounded-full p-1.5 text-teal/60 transition-colors hover:bg-lavender hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
               >
