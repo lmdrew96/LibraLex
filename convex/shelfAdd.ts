@@ -257,6 +257,48 @@ export const enrichBookById = internalAction({
   },
 })
 
+// ── Scheduled embed backfill (convex/crons.ts) ──────────────────────────────
+
+// One page of the books table, reduced to the ids that still lack an embedding.
+// Paged (not .collect()) so the scan stays far under the per-query read limit.
+export const _missingEmbeddingPage = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { cursor }) => {
+    const page = await ctx.db.query("books").paginate({ cursor, numItems: 100 })
+    return {
+      ids: page.page.filter((b) => !b.embedding?.length).map((b) => b._id),
+      cursor: page.continueCursor,
+      isDone: page.isDone,
+    }
+  },
+})
+
+// Safety net behind the add-time enrichment: finds up to `limit` unembedded books
+// (a failed Gemini call, rows from before server-side enrichment) and runs the
+// same enrich + embed on each. Small batches, so a run never nears the action
+// time limit; anything left over is picked up next run.
+export const embedMissing = internalAction({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit = 25 }): Promise<{ processed: number }> => {
+    const ids: Id<"books">[] = []
+    let cursor: string | null = null
+    while (ids.length < limit) {
+      const page: { ids: Id<"books">[]; cursor: string; isDone: boolean } = await ctx.runQuery(
+        internal.shelfAdd._missingEmbeddingPage,
+        { cursor },
+      )
+      ids.push(...page.ids)
+      if (page.isDone) break
+      cursor = page.cursor
+    }
+    const batch = ids.slice(0, limit)
+    for (const id of batch) {
+      await ctx.runAction(internal.shelfAdd.enrichBookById, { id })
+    }
+    return { processed: batch.length }
+  },
+})
+
 // ── Read-status transitions (shared by books.updateBook + the MCP door) ─────
 
 // Date stamps for a read-status change. Starting a book stamps startedAt the

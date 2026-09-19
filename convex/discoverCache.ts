@@ -73,10 +73,14 @@ const toCandidate = (v: GoogleVolume): Candidate => ({
 
 // One Google Books page for (subject, page), English-restricted, filtered to the
 // recency floor post-fetch (no query-string date-range operator exists in Google's
-// `q=` syntax, unlike Open Library's old first_publish_year clause). Returns [] on
-// any failure — the caller keeps a subject's prior cache rather than overwriting it
-// with an empty (see refreshAll).
-const fetchPage = async (subject: string, page: number, yearCeil: number): Promise<Candidate[]> => {
+// `q=` syntax, unlike Open Library's old first_publish_year clause). Returns null on
+// failure (vs [] for a genuinely empty page) so the caller can tell a Google hiccup
+// from the catalog running dry — see fetchSubjectDeep / storeSubject.
+const fetchPage = async (
+  subject: string,
+  page: number,
+  yearCeil: number,
+): Promise<Candidate[] | null> => {
   try {
     const volumes = await fetchVolumesByQuery(`subject:"${subject.replace(/"/g, "")}"`, {
       startIndex: page * PER_SUBJECT,
@@ -87,18 +91,25 @@ const fetchPage = async (subject: string, page: number, yearCeil: number): Promi
       .filter((v) => v.year !== undefined && v.year >= YEAR_FLOOR && v.year <= yearCeil)
       .map(toCandidate)
   } catch {
-    return []
+    return null
   }
 }
 
 // A subject's deep pool: PAGES of Google Books merged + work-deduped, capped. Stops
 // early once the catalog runs dry for the subject.
-const fetchSubjectDeep = async (subject: string): Promise<Candidate[]> => {
+const fetchSubjectDeep = async (
+  subject: string,
+): Promise<{ candidates: Candidate[]; partial: boolean }> => {
   const yearCeil = new Date().getFullYear() + 1
   const out: Candidate[] = []
   const seen = new Set<string>()
+  let partial = false
   for (let page = 0; page < PAGES; page++) {
     const batch = await fetchPage(subject, page, yearCeil)
+    if (batch === null) {
+      partial = true // a page failed — what we have is incomplete
+      break
+    }
     if (batch.length === 0) break
     for (const c of batch) {
       if (!seen.has(c.workKey)) {
@@ -107,7 +118,7 @@ const fetchSubjectDeep = async (subject: string): Promise<Candidate[]> => {
       }
     }
   }
-  return out.slice(0, MAX_STORED)
+  return { candidates: out.slice(0, MAX_STORED), partial }
 }
 
 // Read a subject's precomputed pool. Returns [] when not yet cached — the
@@ -123,38 +134,51 @@ export const getBySubject = query({
   },
 })
 
-// Upsert one subject's pool. Internal — only refreshAll calls it.
+// Upsert one subject's pool. Internal — only refreshAll calls it. A `partial` fetch
+// (a page failed mid-way) never replaces a bigger cached pool — returns false when
+// it kept the old one.
 export const storeSubject = internalMutation({
-  args: { subject: v.string(), candidates: v.array(candidateValidator) },
-  handler: async (ctx, { subject, candidates }) => {
+  args: { subject: v.string(), candidates: v.array(candidateValidator), partial: v.boolean() },
+  handler: async (ctx, { subject, candidates, partial }): Promise<boolean> => {
     const key = subject.trim().toLowerCase()
     const existing = await ctx.db
       .query("discoveryCache")
       .withIndex("by_subject", (q) => q.eq("subject", key))
       .unique()
+    if (existing && partial && existing.candidates.length > candidates.length) return false
     if (existing) {
       await ctx.db.patch(existing._id, { candidates, refreshedAt: Date.now() })
     } else {
       await ctx.db.insert("discoveryCache", { subject: key, candidates, refreshedAt: Date.now() })
     }
+    return true
   },
 })
 
 // Refresh every genre subject's pool from Google Books. Run daily by the cron, and
 // re-runnable from the CLI to seed/refresh on demand:
 //   npx convex run discoverCache:refreshAll
-// A subject whose fetch comes back empty (a Google hiccup) keeps its prior cached pool.
+// A subject whose fetch comes back empty keeps its prior cached pool, and a partial
+// fetch (a page failed) only replaces a smaller one. Kept pools are logged so a
+// Google outage shows up in the Convex logs instead of failing silently.
 export const refreshAll = internalAction({
   args: {},
-  handler: async (ctx): Promise<{ subject: string; count: number }[]> => {
-    return await Promise.all(
+  handler: async (ctx): Promise<{ subject: string; count: number; kept: boolean }[]> => {
+    const results = await Promise.all(
       GENRE_SUBJECTS.map(async (subject) => {
-        const candidates = await fetchSubjectDeep(subject)
-        if (candidates.length > 0) {
-          await ctx.runMutation(internal.discoverCache.storeSubject, { subject, candidates })
-        }
-        return { subject, count: candidates.length }
+        const { candidates, partial } = await fetchSubjectDeep(subject)
+        const stored =
+          candidates.length > 0 &&
+          (await ctx.runMutation(internal.discoverCache.storeSubject, {
+            subject,
+            candidates,
+            partial,
+          }))
+        return { subject, count: candidates.length, kept: !stored }
       }),
     )
+    const kept = results.filter((r) => r.kept).map((r) => r.subject)
+    if (kept.length) console.warn(`discovery refresh kept prior pools for: ${kept.join(", ")}`)
+    return results
   },
 })

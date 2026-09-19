@@ -14,4 +14,9 @@ crons.daily(
   internal.discoverCache.refreshAll,
 )
 
+// Embed any book that slipped through add-time enrichment (a Gemini hiccup, or a
+// row that predates server-side enrichment) — small hourly batches, so unembedded
+// books still reach the taste vector and vector recs without a manual backfill.
+crons.hourly("embed-missing-books", { minuteUTC: 17 }, internal.shelfAdd.embedMissing, {})
+
 export default crons

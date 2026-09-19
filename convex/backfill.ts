@@ -4,6 +4,7 @@ import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { enrichBook } from "./enrich"
 import { embedBookWithRetry } from "./embed"
+import { rollTasteVector } from "./tasteVector"
 
 // One-off (re-runnable) enrich + normalize backfill for the existing shelf.
 // INTERNAL — not client-exposed; run from the CLI against whichever deployment
@@ -34,9 +35,17 @@ import { embedBookWithRetry } from "./embed"
 //   npx convex env set GOOGLE_BOOKS_API_KEY <key>
 //   npx convex env set GEMINI_API_KEY <key>
 
-export const _allBooks = internalQuery({
-  args: {},
-  handler: async (ctx): Promise<Doc<"books">[]> => ctx.db.query("books").collect(),
+// One page of the table. Paged so no single query reads every book (with their
+// 1536-float embeddings) at once — that's what hits Convex's per-query read limit.
+export const _booksPage = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (
+    ctx,
+    { cursor },
+  ): Promise<{ page: Doc<"books">[]; cursor: string; isDone: boolean }> => {
+    const res = await ctx.db.query("books").paginate({ cursor, numItems: 50 })
+    return { page: res.page, cursor: res.continueCursor, isDone: res.isDone }
+  },
 })
 
 export const _applyEnrichment = internalMutation({
@@ -55,7 +64,14 @@ export const _applyEnrichment = internalMutation({
     embedding: v.optional(v.array(v.float64())),
   },
   handler: async (ctx, { id, ...fields }) => {
+    const book = await ctx.db.get(id)
+    if (!book) return
     await ctx.db.patch(id, { ...fields, coverId: undefined })
+    // Same rule as the add path: a read/reading book's first vector joins the taste vector.
+    const gotFirstEmbedding = !book.embedding?.length && (fields.embedding?.length ?? 0) > 0
+    if (gotFirstEmbedding && (book.readStatus === "read" || book.readStatus === "reading")) {
+      await rollTasteVector(ctx, book.userId, fields.embedding!)
+    }
   },
 })
 
@@ -83,7 +99,17 @@ type BackfillResult = {
 export const enrichAllBooks = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun = true }): Promise<BackfillResult> => {
-    const books = await ctx.runQuery(internal.backfill._allBooks, {})
+    const books: Doc<"books">[] = []
+    let cursor: string | null = null
+    for (;;) {
+      const res: { page: Doc<"books">[]; cursor: string; isDone: boolean } = await ctx.runQuery(
+        internal.backfill._booksPage,
+        { cursor },
+      )
+      books.push(...res.page)
+      if (res.isDone) break
+      cursor = res.cursor
+    }
     const changes: BackfillChange[] = []
 
     for (const b of books) {
