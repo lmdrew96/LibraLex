@@ -6,8 +6,11 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ============================================================
-   LibraLex — ADHDesigns house theme (light, brand-canonical)
-   Tokens mirror the ADHDesigns brand kit. Fonts are injected by
+   LibraLex — Wisteria & Vellum theme (light; dark mode below)
+   LibraLex's own literary palette (v0.42.0), not the ADHDesigns brand kit.
+   Token NAMES predate it and are kept for stability — read them as roles, not
+   hues: `teal` = moss secondary text, `gold` = wisteria accent, `mint`/`green` =
+   sage. Fonts are injected by
    next/font in app/layout.tsx as --font-fraunces / -libre-franklin /
    -geist-mono, then mapped to brand font tokens below.
 
