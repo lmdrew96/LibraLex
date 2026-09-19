@@ -104,7 +104,7 @@ function WishlistCard({ book }: { book: BookWithCover }) {
           <button
             onClick={remove}
             aria-label={`Remove ${book.title} from wishlist`}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-teal transition-colors hover:bg-lavender focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-teal transition-colors hover:bg-lavender focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
           >
             <Trash2 className="h-4 w-4" />
           </button>

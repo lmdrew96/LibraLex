@@ -308,7 +308,7 @@ function SearchStep({
           type="button"
           onClick={onScan}
           aria-label="Scan a barcode"
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal text-surface transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal text-surface transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
         >
           <ScanBarcode className="h-5 w-5" />
         </button>
@@ -336,7 +336,7 @@ function SearchStep({
             <li key={`${b.workKey ?? b.title}-${i}`}>
               <button
                 onClick={() => onPick(b)}
-                className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors hover:bg-lavender/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40"
+                className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors hover:bg-lavender/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
               >
                 <div className="w-11 shrink-0">
                   <BookCover coverUrlFallback={b.coverUrlFallback} title={b.title} size="S" />

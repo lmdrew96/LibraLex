@@ -210,7 +210,7 @@ export default function FriendsPage() {
                 <button
                   onClick={() => decline(req.friendshipId, req.displayName)}
                   aria-label={`Decline ${req.displayName}`}
-                  className="rounded-full p-2 text-teal transition-colors hover:bg-lavender focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+                  className="rounded-full p-2 text-teal transition-colors hover:bg-lavender focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -277,7 +277,7 @@ export default function FriendsPage() {
               >
                 <Link
                   href={`/friends/${friend.profileId}`}
-                  className="flex min-w-0 flex-1 items-center gap-3 focus-visible:outline-none"
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 focus-visible:ring-offset-card"
                 >
                   <FriendAvatar name={friend.displayName} avatarUrl={friend.avatarUrl} size="md" />
                   <span className="min-w-0 flex-1">
@@ -291,7 +291,7 @@ export default function FriendsPage() {
                 <button
                   onClick={() => unfriend(friend.friendshipId, friend.displayName)}
                   aria-label={`Remove ${friend.displayName}`}
-                  className="rounded-full p-2 text-teal/90 transition-colors hover:bg-lavender hover:text-[var(--color-overdue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50"
+                  className="rounded-full p-2 text-teal/90 transition-colors hover:bg-lavender hover:text-[var(--color-overdue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
                 >
                   <X className="h-4 w-4" />
                 </button>

@@ -166,3 +166,14 @@ html.dark .cover-placeholder {
     animation: none;
   }
 }
+
+/* Keyboard focus, everywhere. Any interactive element without its own focus-visible
+   ring still gets a clearly visible outline (teal clears 3:1 against both surfaces
+   and cards in both themes). Components that set their own ring use
+   focus-visible:outline-none, which outranks this base-layer rule. */
+@layer base {
+  :where(a, button, input, select, textarea, summary, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid var(--color-teal);
+    outline-offset: 2px;
+  }
+}

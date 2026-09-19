@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 // Pill buttons, ADHDesigns house style. Generous heights for comfortable touch
 // targets (≥44px on md).
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-full font-medium transition-opacity disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+  "inline-flex items-center justify-center gap-2 rounded-full font-medium transition-opacity disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
   {
     variants: {
       variant: {

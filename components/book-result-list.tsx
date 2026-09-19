@@ -40,7 +40,7 @@ export function BookResultList({ results }: { results: BookSearchResult[] }) {
             trigger={
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors hover:bg-lavender/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40"
+                className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition-colors hover:bg-lavender/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
               >
                 <div className="w-14 shrink-0">
                   <BookCover

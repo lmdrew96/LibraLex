@@ -28,7 +28,7 @@ export function ReadNext({ books }: { books: BookWithCover[] }) {
       </div>
       <Link
         href={`/book/${b._id}`}
-        className="group flex items-center gap-4 rounded-2xl p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40"
+        className="group flex items-center gap-4 rounded-2xl p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
       >
         <div className="w-16 shrink-0 sm:w-20">
           <BookCover

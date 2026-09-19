@@ -215,7 +215,7 @@ function AddActions({ book, onClose }: { book: OffShelfBook; onClose: () => void
         type="button"
         onClick={notInterested}
         disabled={saving}
-        className="inline-flex items-center gap-1.5 self-start rounded-full text-sm font-medium text-teal/70 transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 self-start rounded-full text-sm font-medium text-teal/70 transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal disabled:opacity-50"
       >
         <EyeOff className="h-4 w-4" />
         Not interested
