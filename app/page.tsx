@@ -12,6 +12,7 @@ import { AddBookDialog } from "@/components/add-book-dialog"
 import { BookGrid, BookGridSkeleton } from "@/components/book-grid"
 import { EmptyState } from "@/components/empty-state"
 import { ReadNext } from "@/components/read-next"
+import { GettingStarted } from "@/components/getting-started"
 import { HistoryView } from "@/components/history-view"
 import { WishlistView } from "@/components/wishlist-view"
 
@@ -94,7 +95,8 @@ function OwnedView() {
   }, [books, filter, sort])
 
   return (
-    <>
+    <div className="flex flex-col gap-6">
+      <GettingStarted />
       {books === undefined ? (
         <BookGridSkeleton />
       ) : books.length === 0 ? (
@@ -152,6 +154,6 @@ function OwnedView() {
           )}
         </div>
       )}
-    </>
+    </div>
   )
 }

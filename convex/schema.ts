@@ -152,6 +152,9 @@ export default defineSchema({
     // the running-mean denominator.
     tasteVector: v.optional(v.array(v.float64())),
     tasteVectorCount: v.optional(v.number()),
+    // When the user closed the Shelf "Getting started" checklist (see
+    // users.onboardingStatus). Absent = still showing, until every step is done.
+    onboardingDismissedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])

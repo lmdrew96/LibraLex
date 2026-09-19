@@ -81,7 +81,63 @@ export const getMyProfile = query({
   },
 })
 
+// The Shelf "Getting started" checklist (components/getting-started.tsx). Each
+// step ticks itself off from real data — no separate progress to keep in sync.
+// Null when signed out / no profile yet, or once dismissed.
+export const onboardingStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getUserId(ctx)
+    if (!userId) return null
+    const profile = await profileFor(ctx, userId)
+    if (!profile || profile.onboardingDismissedAt) return null
+
+    const anyBook = await ctx.db
+      .query("books")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first()
+    const anyStarted =
+      (await ctx.db
+        .query("books")
+        .withIndex("by_user_readStatus", (q) => q.eq("userId", userId).eq("readStatus", "reading"))
+        .first()) ??
+      (await ctx.db
+        .query("books")
+        .withIndex("by_user_readStatus", (q) => q.eq("userId", userId).eq("readStatus", "read"))
+        .first())
+    // A sent or received request counts — the step is "reach out", not "get accepted".
+    const anyFriendship =
+      (await ctx.db
+        .query("friendships")
+        .withIndex("by_requester", (q) => q.eq("requesterId", userId))
+        .first()) ??
+      (await ctx.db
+        .query("friendships")
+        .withIndex("by_addressee", (q) => q.eq("addresseeId", userId))
+        .first())
+
+    return {
+      addedBook: anyBook !== null,
+      setStatus: anyStarted !== null,
+      addedFriend: anyFriendship !== null,
+      pickedGenres: (profile.favoriteGenres?.length ?? 0) > 0,
+      connectedClaude: profile.mcpToken !== undefined,
+    }
+  },
+})
+
 // ── Mutations ─────────────────────────────────────────────────────────────────
+
+// Hide the Getting started checklist for good (all devices).
+export const dismissOnboarding = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx)
+    const profile = await profileFor(ctx, userId)
+    if (!profile) throw new ConvexError("Profile isn't ready yet — reload and try again.")
+    await ctx.db.patch(profile._id, { onboardingDismissedAt: Date.now() })
+  },
+})
 
 // Resolve a friend code to a public profile — powers the /add/[code] landing.
 // A mutation (not a query) so every lookup spends a friendCodeLookup token; a

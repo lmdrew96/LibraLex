@@ -209,7 +209,7 @@ export default function SettingsPage() {
         </section>
       )}
 
-      <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
+      <section id="genres" className="mb-5 scroll-mt-32 rounded-[24px] border border-lavender bg-card p-5">
         <div className="mb-1 flex items-center gap-2">
           <Tags className="h-5 w-5 text-teal" />
           <h2 className="text-sm font-semibold text-teal">Favorite genres</h2>
@@ -291,7 +291,7 @@ export default function SettingsPage() {
         )}
       </section>
 
-      <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
+      <section id="mcp" className="mb-5 scroll-mt-32 rounded-[24px] border border-lavender bg-card p-5">
         <div className="mb-1 flex items-center gap-2">
           <Bot className="h-5 w-5 text-teal" />
           <h2 className="text-sm font-semibold text-teal">Connect to Claude (MCP)</h2>
