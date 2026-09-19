@@ -27,7 +27,7 @@ export function ThemeToggle() {
           onClick={() => setTheme(value)}
           className={cn(
             "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-            theme === value ? "bg-teal text-surface" : "text-ink/70 hover:bg-lavender/50",
+            theme === value ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/50",
           )}
         >
           <Icon className="h-4 w-4" />
@@ -50,7 +50,7 @@ export function ThemeQuickToggle() {
       aria-label={`Switch to ${next} mode`}
       title={`Switch to ${next} mode`}
       onClick={() => setTheme(next)}
-      className="flex h-11 w-11 items-center justify-center rounded-full text-ink/70 transition-colors hover:bg-lavender/60"
+      className="flex h-11 w-11 items-center justify-center rounded-full text-ink/85 transition-colors hover:bg-lavender/60"
     >
       {resolvedTheme === "dark" ? (
         <Sun className="h-5 w-5" />

@@ -14,10 +14,17 @@ import { BookCover } from "@/components/book-cover"
 import { EmptyState } from "@/components/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 
+// Due line sits on a card, where the state hues fail AA as text in dark mode —
+// so the text stays teal/ink and a dot carries the state.
 const dueColor: Record<string, string> = {
   comfortable: "text-teal",
-  soon: "text-[var(--color-due-soon)]",
-  overdue: "text-[var(--color-overdue)] font-semibold",
+  soon: "text-ink",
+  overdue: "text-ink font-semibold",
+}
+const dueDot: Record<string, string> = {
+  comfortable: "bg-teal",
+  soon: "bg-[var(--color-due-soon)]",
+  overdue: "bg-[var(--color-overdue)]",
 }
 
 type Tab = "reading" | "read"
@@ -58,7 +65,7 @@ export default function HistoryPage() {
             onClick={() => setTab(t.key)}
             className={cn(
               "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-              tab === t.key ? "bg-teal text-surface" : "text-ink/70 hover:bg-lavender/50",
+              tab === t.key ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/50",
             )}
           >
             {t.label}
@@ -117,7 +124,16 @@ export default function HistoryPage() {
                       </p>
                     )}
                     {tab === "reading" && activeLoan && book.dueDate !== undefined && (
-                      <p className={cn("mt-1 text-sm", dueColor[loanStatus(book.dueDate)])}>
+                      <p
+                        className={cn(
+                          "mt-1 flex items-center gap-1.5 text-sm",
+                          dueColor[loanStatus(book.dueDate)],
+                        )}
+                      >
+                        <span
+                          aria-hidden
+                          className={cn("h-2 w-2 rounded-full", dueDot[loanStatus(book.dueDate)])}
+                        />
                         {dueLabel(book.dueDate)}
                       </p>
                     )}

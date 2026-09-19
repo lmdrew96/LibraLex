@@ -555,7 +555,7 @@ function Segmented({
           onClick={() => onChange(opt.value)}
           className={cn(
             "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-            value === opt.value ? "bg-teal text-surface" : "text-ink/70 hover:bg-lavender/50",
+            value === opt.value ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/50",
           )}
         >
           {opt.label}

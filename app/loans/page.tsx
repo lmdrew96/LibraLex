@@ -17,11 +17,18 @@ import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
-// Calm, non-alarmist badge styling per status.
+// Calm, non-alarmist badge styling per status. Text is always ink (the state
+// hues fail AA as small text on their own tints, esp. in dark mode); the tint and
+// a solid dot carry the state instead.
 const badgeStyle: Record<string, string> = {
-  comfortable: "bg-mint/40 text-teal",
-  soon: "bg-[var(--color-due-soon)]/20 text-[var(--color-due-soon)]",
-  overdue: "bg-[var(--color-overdue)]/15 text-[var(--color-overdue)]",
+  comfortable: "bg-mint/40 text-ink",
+  soon: "bg-[var(--color-due-soon)]/20 text-ink",
+  overdue: "bg-[var(--color-overdue)]/15 text-ink font-semibold",
+}
+const dotStyle: Record<string, string> = {
+  comfortable: "bg-teal",
+  soon: "bg-[var(--color-due-soon)]",
+  overdue: "bg-[var(--color-overdue)]",
 }
 
 export default function LoansPage() {
@@ -109,7 +116,13 @@ function LoanRow({ loan }: { loan: BookWithCover }) {
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {loan.dueDate !== undefined && (
-            <span className={cn("rounded-full px-3 py-1 text-sm font-medium", badgeStyle[status])}>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",
+                badgeStyle[status],
+              )}
+            >
+              <span aria-hidden className={cn("h-2 w-2 rounded-full", dotStyle[status])} />
               {dueLabel(loan.dueDate)}
             </span>
           )}

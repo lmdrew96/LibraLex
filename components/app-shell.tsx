@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 "flex h-11 w-11 items-center justify-center rounded-full transition-colors",
                 pathname.startsWith("/settings")
                   ? "bg-teal text-surface"
-                  : "text-ink/70 hover:bg-lavender/60",
+                  : "text-ink/85 hover:bg-lavender/60",
               )}
             >
               <Settings className="h-5 w-5" />
@@ -91,7 +91,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href)
             const badge = badgeFor(href)
-            // Loans uses the overdue accent (an alert); social badges use gold (a nudge).
+            // Loans uses the overdue accent (an alert); social badges are a neutral ink nudge.
             const alertBadge = href === "/loans"
             return (
               <Link
@@ -100,7 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 aria-label={label}
                 className={cn(
                   "relative flex h-11 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition-colors",
-                  active ? "bg-teal text-surface" : "text-ink/70 hover:bg-lavender/60",
+                  active ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/60",
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -115,8 +115,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                       active
                         ? "bg-surface text-teal"
                         : alertBadge
-                          ? "bg-[var(--color-overdue)] text-white"
-                          : "bg-gold text-ink dark:text-surface",
+                          ? "bg-[var(--color-overdue)] text-surface"
+                          : "bg-ink text-surface",
                     )}
                   >
                     {badge}

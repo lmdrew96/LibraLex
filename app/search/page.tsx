@@ -50,7 +50,7 @@ export default function SearchPage() {
       )}
 
       {error && !searching && (
-        <p className="rounded-2xl bg-lavender/40 px-4 py-3 text-sm text-[var(--color-overdue)]">{error}</p>
+        <p className="rounded-2xl border-l-4 border-[var(--color-overdue)] bg-lavender/40 px-4 py-3 text-sm text-ink">{error}</p>
       )}
 
       {!searching && !error && results.length > 0 && <BookResultList results={results} />}

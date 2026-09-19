@@ -56,7 +56,7 @@ export function AskForABook() {
         <button
           type="submit"
           disabled={!query.trim() || searching}
-          className="absolute right-2 top-1/2 h-9 -translate-y-1/2 rounded-full bg-teal px-4 text-sm font-medium text-white transition-opacity disabled:opacity-40"
+          className="absolute right-2 top-1/2 h-9 -translate-y-1/2 rounded-full bg-teal px-4 text-sm font-medium text-surface transition-opacity disabled:opacity-40"
         >
           {searching ? "Asking…" : "Ask"}
         </button>

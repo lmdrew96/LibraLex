@@ -84,7 +84,7 @@ export default function AuthorPage({ params }: { params: Promise<{ name: string 
       )}
 
       {error && !loading && (
-        <p className="rounded-2xl bg-lavender/40 px-4 py-3 text-sm text-[var(--color-overdue)]">
+        <p className="rounded-2xl border-l-4 border-[var(--color-overdue)] bg-lavender/40 px-4 py-3 text-sm text-ink">
           {error}
         </p>
       )}
