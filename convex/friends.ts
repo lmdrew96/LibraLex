@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { getUserId, requireUserId } from "./util"
+import { rateLimiter } from "./rateLimits"
 import { normalizeCode, profileFor, toPublicProfile } from "./users"
 
 // Find the single friendship row between two users, in either direction.
@@ -130,18 +131,24 @@ export const getOutgoingRequests = query({
 
 // Send a friend request by code. If the recipient already sent ME a pending
 // request, this accepts it (the natural "we both added each other" case).
+// Throttled per user (friendCodeLookup). An unknown code RETURNS "not_found"
+// instead of throwing: a throw would roll back the spent rate-limit token and
+// make wrong guesses free — exactly the enumeration this limit exists to stop.
 export const sendRequestByCode = mutation({
   args: { code: v.string() },
-  handler: async (ctx, args): Promise<{ result: "sent" | "accepted" }> => {
+  handler: async (ctx, args): Promise<{ result: "sent" | "accepted" | "not_found" }> => {
     const me = await requireUserId(ctx)
     const code = normalizeCode(args.code)
     if (!code) throw new ConvexError("Enter a friend code.")
+
+    const { ok } = await rateLimiter.limit(ctx, "friendCodeLookup", { key: me })
+    if (!ok) throw new ConvexError("Too many friend-code tries — wait a few minutes and try again.")
 
     const target = await ctx.db
       .query("users")
       .withIndex("by_friendCode", (q) => q.eq("friendCode", code))
       .unique()
-    if (!target) throw new ConvexError("No reader has that code.")
+    if (!target) return { result: "not_found" }
     if (target.userId === me) throw new ConvexError("That's your own code.")
 
     const existing = await findFriendship(ctx, me, target.userId)

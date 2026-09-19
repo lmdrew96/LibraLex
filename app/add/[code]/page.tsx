@@ -1,11 +1,12 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation } from "convex/react"
 import { toast } from "sonner"
 import { UserPlus } from "lucide-react"
+import type { FunctionReturnType } from "convex/server"
 import { api } from "@/convex/_generated/api"
 import { userMessage } from "@/lib/errors"
 import { AppShell } from "@/components/app-shell"
@@ -19,16 +20,39 @@ export default function AddByCodePage({
   params: Promise<{ code: string }>
 }) {
   const { code } = use(params)
-  const profile = useQuery(api.users.getProfileByCode, { code })
+  const lookup = useMutation(api.users.lookupProfileByCode)
   const sendRequest = useMutation(api.friends.sendRequestByCode)
   const router = useRouter()
   const [sending, setSending] = useState(false)
+  // undefined = looking up, null = no match. The lookup is a rate-limited
+  // mutation, so it runs once per code (the ref guards StrictMode's double effect).
+  const [profile, setProfile] = useState<FunctionReturnType<
+    typeof api.users.lookupProfileByCode
+  > | undefined>(undefined)
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const lookedUp = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (lookedUp.current === code) return
+    lookedUp.current = code
+    lookup({ code })
+      .then(setProfile)
+      .catch((err: unknown) => {
+        setLookupError(userMessage(err, "Couldn't look up that code."))
+        setProfile(null)
+      })
+  }, [code, lookup])
 
   const send = async () => {
     if (sending) return
     setSending(true)
     try {
       const { result } = await sendRequest({ code })
+      if (result === "not_found") {
+        toast.error("No reader has that code.")
+        setSending(false)
+        return
+      }
       toast.success(result === "accepted" ? "You're now friends!" : "Friend request sent.")
       router.push("/friends")
     } catch (err) {
@@ -48,10 +72,12 @@ export default function AddByCodePage({
           </div>
         ) : profile === null ? (
           <div className="flex flex-col items-center gap-3 rounded-[24px] border border-dashed border-lavender bg-card/50 p-8 text-center">
-            <h1 className="text-2xl font-semibold text-ink">That code didn&apos;t match</h1>
+            <h1 className="text-2xl font-semibold text-ink">
+              {lookupError ? "Couldn't check that code" : "That code didn't match"}
+            </h1>
             <p className="max-w-sm text-teal">
-              This friend code isn&apos;t valid, or it&apos;s your own. Double-check it
-              and try adding from the Friends page.
+              {lookupError ??
+                "This friend code isn't valid, or it's your own. Double-check it and try adding from the Friends page."}
             </p>
             <Button asChild variant="calm" size="sm" className="mt-1">
               <Link href="/friends">Go to Friends</Link>

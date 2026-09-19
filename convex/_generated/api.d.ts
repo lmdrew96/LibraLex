@@ -24,6 +24,7 @@ import type * as mcpAuth from "../mcpAuth.js";
 import type * as mcpData from "../mcpData.js";
 import type * as migrations from "../migrations.js";
 import type * as normalize from "../normalize.js";
+import type * as rateLimits from "../rateLimits.js";
 import type * as recs from "../recs.js";
 import type * as search from "../search.js";
 import type * as shelf from "../shelf.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   mcpData: typeof mcpData;
   migrations: typeof migrations;
   normalize: typeof normalize;
+  rateLimits: typeof rateLimits;
   recs: typeof recs;
   search: typeof search;
   shelf: typeof shelf;
@@ -90,4 +92,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+};

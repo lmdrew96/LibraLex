@@ -50,6 +50,10 @@ export default function FriendsPage() {
     setAdding(true)
     try {
       const { result } = await sendRequest({ code: value })
+      if (result === "not_found") {
+        toast.error("No reader has that code.")
+        return
+      }
       toast.success(
         result === "accepted"
           ? "You're now friends!"
@@ -175,7 +179,7 @@ export default function FriendsPage() {
             aria-label="Friend code"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="SHELF-XXXX"
+            placeholder="SHELF-XXXXXXXX"
             autoCapitalize="characters"
             className="h-11 min-w-0 flex-1 rounded-full border border-lavender bg-surface px-4 font-mono uppercase tracking-wider text-ink placeholder:text-teal/90 placeholder:tracking-normal focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
           />

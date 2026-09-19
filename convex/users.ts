@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server"
+import { rateLimiter } from "./rateLimits"
 import { ConvexError, v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
@@ -6,7 +7,11 @@ import { getUserId, requireUserId } from "./util"
 
 // Ambiguity-free charset (no 0/O/1/I/L) so a code is easy to read aloud / retype.
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-const CODE_LEN = 4
+// 31^8 ≈ 850 billion codes, so walking the space is impractical even before the
+// per-user lookup throttle (convex/rateLimits.ts). Profiles minted before v0.48
+// kept their 4-char codes — already shared, so they must keep resolving;
+// normalizeCode accepts any body length.
+const CODE_LEN = 8
 
 // Math.random() is permitted in Convex mutations (unlike queries), same bucket as
 // the Date.now() the existing mutations already rely on. We retry on the rare
@@ -76,15 +81,21 @@ export const getMyProfile = query({
   },
 })
 
+// ── Mutations ─────────────────────────────────────────────────────────────────
+
 // Resolve a friend code to a public profile — powers the /add/[code] landing.
-// Returns null for unknown codes and for the caller's own code (nothing to do).
-export const getProfileByCode = query({
+// A mutation (not a query) so every lookup spends a friendCodeLookup token; a
+// query can't write, so it couldn't be throttled. Returns null for unknown codes
+// and for the caller's own code (nothing to do). Misses return rather than throw
+// so the spent token commits.
+export const lookupProfileByCode = mutation({
   args: { code: v.string() },
-  handler: async (ctx, args) => {
-    const userId = await getUserId(ctx)
-    if (!userId) return null
+  handler: async (ctx, args): Promise<PublicProfile | null> => {
+    const userId = await requireUserId(ctx)
     const code = normalizeCode(args.code)
     if (!code) return null
+    const { ok } = await rateLimiter.limit(ctx, "friendCodeLookup", { key: userId })
+    if (!ok) throw new ConvexError("Too many friend-code lookups — try again in a few minutes.")
     const profile = await ctx.db
       .query("users")
       .withIndex("by_friendCode", (q) => q.eq("friendCode", code))
@@ -93,8 +104,6 @@ export const getProfileByCode = query({
     return toPublicProfile(profile)
   },
 })
-
-// ── Mutations ─────────────────────────────────────────────────────────────────
 
 // Upsert the caller's profile from their Clerk identity. Called on every
 // authenticated load (see AppShell), so it also keeps name/avatar fresh. Returns
