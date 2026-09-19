@@ -156,8 +156,11 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  const returnedLoan = book.ownership === "library" && book.returned === true
+
   const changeOwnership = async (next: Ownership) => {
-    if (next === book.ownership) return
+    // Tapping Library on a returned loan re-borrows it; otherwise same-shelf is a no-op.
+    if (next === book.ownership && !(next === "library" && returnedLoan)) return
     // Leaving the library shelf retires the loan's checkout/due dates for good —
     // ask first while the loan is still active.
     if (
@@ -276,6 +279,18 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
             />
             <ThriftBooksLink book={book} />
           </div>
+
+          {returnedLoan && (
+            <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-teal">
+              Returned to the library.
+              <button
+                onClick={() => changeOwnership("library")}
+                className="font-medium text-ink underline underline-offset-2"
+              >
+                Borrow again
+              </button>
+            </p>
+          )}
 
           {activeLoan && book.dueDate !== undefined && (
             <p className={cn("mt-3 text-sm", dueColor[loanStatus(book.dueDate)])}>

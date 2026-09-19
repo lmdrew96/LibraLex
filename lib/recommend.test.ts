@@ -145,6 +145,17 @@ describe("readNext", () => {
     expect(picks[0].book._id).toBe("loan")
     expect(picks[0].urgency).toBeGreaterThan(0)
   })
+
+  it("only suggests books you have in hand (no wishlist, no returned loans)", () => {
+    const now = new Date(2025, 5, 15, 12).getTime()
+    const lib = [
+      book({ _id: "wish", title: "Wishlisted", ownership: "wishlist" }),
+      book({ _id: "gone", title: "Returned", ownership: "library", returned: true }),
+      book({ _id: "none", title: "Friend's copy", ownership: "none" }),
+      book({ _id: "mine", title: "On my shelf" }),
+    ]
+    expect(readNext(lib, now).map((p) => p.book._id)).toEqual(["mine"])
+  })
 })
 
 describe("tasteSourceCount", () => {

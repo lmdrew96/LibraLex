@@ -331,8 +331,10 @@ export type ReadNextPick<T extends RecBook> = {
   urgency: number
 }
 
-/** Unread books ranked by w1·taste + w2·urgency (taste normalized to the candidate
- *  set). Floats a soon-due loan that also matches taste; the caller surfaces [0]. */
+/** Unread books you can actually pick up — owned, or an active library loan —
+ *  ranked by w1·taste + w2·urgency (taste normalized to the candidate set). Floats
+ *  a soon-due loan that also matches taste; the caller surfaces [0]. Wishlist and
+ *  returned loans are excluded: you don't have them in hand. */
 export const readNext = <T extends RecBook>(
   books: T[],
   now: number,
@@ -341,7 +343,9 @@ export const readNext = <T extends RecBook>(
 ): ReadNextPick<T>[] => {
   const idf = computeIdf(books)
   const profile = tasteProfile(books, idf)
-  const candidates = books.filter((b) => b.readStatus === "unread")
+  const inHand = (b: T): boolean =>
+    b.ownership === "owned" || (b.ownership === "library" && b.returned !== true)
+  const candidates = books.filter((b) => b.readStatus === "unread" && inHand(b))
   if (candidates.length === 0) return []
   const tasteRaw = candidates.map((b) => (profile.size ? cosine(profile, bookVector(b, idf)) : 0))
   const maxTaste = Math.max(...tasteRaw, 1e-9)

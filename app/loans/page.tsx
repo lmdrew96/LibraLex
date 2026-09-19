@@ -33,6 +33,7 @@ const dotStyle: Record<string, string> = {
 
 export default function LoansPage() {
   const loans = useQuery(api.books.listLoans)
+  const returned = useQuery(api.books.listReturnedLoans)
 
   return (
     <AppShell>
@@ -69,7 +70,51 @@ export default function LoansPage() {
           ))}
         </ul>
       )}
+
+      {returned && returned.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold text-teal">Returned</h2>
+          <ul className="flex flex-col gap-2">
+            {returned.map((book) => (
+              <li key={book._id}>
+                <ReturnedRow book={book} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </AppShell>
+  )
+}
+
+// A past loan, with a one-tap re-borrow (fresh checkout + default due date).
+function ReturnedRow({ book }: { book: BookWithCover }) {
+  const checkoutBook = useMutation(api.books.checkoutBook)
+  const [busy, setBusy] = useState(false)
+
+  const borrowAgain = async () => {
+    setBusy(true)
+    try {
+      await checkoutBook({ id: book._id })
+      toast.success(`Borrowing “${book.title}” again — due in 3 weeks.`)
+    } catch {
+      toast.error("Couldn't check it out again. Try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-lavender bg-card p-3">
+      <Link href={`/book/${book._id}`} className="min-w-0 flex-1">
+        <p className="truncate font-medium text-ink hover:underline">{book.title}</p>
+        <p className="truncate text-sm text-teal">{book.authors[0] ?? "Unknown author"}</p>
+      </Link>
+      <Button size="sm" variant="outline" disabled={busy} onClick={borrowAgain}>
+        <RotateCcw className="h-4 w-4" />
+        Borrow again
+      </Button>
+    </div>
   )
 }
 

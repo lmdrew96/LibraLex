@@ -153,6 +153,25 @@ export const listLoans = query({
   },
 })
 
+// Returned library loans, most recently due first (capped) — the Loans page's
+// "Returned" list, where a book can be borrowed again.
+export const listReturnedLoans = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getUserId(ctx)
+    if (!userId) return []
+    const loans = await ctx.db
+      .query("books")
+      .withIndex("by_user_ownership", (q) => q.eq("userId", userId).eq("ownership", "library"))
+      .collect()
+    const returned = loans
+      .filter((b) => b.returned === true)
+      .sort((a, b) => (b.dueDate ?? 0) - (a.dueDate ?? 0))
+      .slice(0, 10)
+    return await Promise.all(returned.map((b) => withCoverUrl(ctx, b)))
+  },
+})
+
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 // Put a book on a shelf. Dedupes across all shelves (an existing copy is left
