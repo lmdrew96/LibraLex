@@ -305,6 +305,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
               options={READ_STATUSES.map((s) => ({ value: s, label: READ_STATUS_LABELS[s] }))}
               value={book.readStatus}
               onChange={(v) => setStatus(v as ReadStatus)}
+              label="Reading status"
             />
             {/* Finish date — only meaningful once a book is read. Drives the
                 "read this year" stats; "Don't remember" leaves it undated. */}
@@ -346,12 +347,17 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
           {/* Rating */}
           <section className="mt-5">
             <h2 className="mb-2 text-sm font-semibold text-teal">Your rating</h2>
-            <div className="flex items-center gap-1">
+            <div
+              role="group"
+              aria-label={book.rating ? `Your rating: ${book.rating} of 5` : "Your rating: not rated"}
+              className="flex items-center gap-1"
+            >
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
                   onClick={() => setRating(n)}
                   aria-label={`Rate ${n} star${n === 1 ? "" : "s"}`}
+                  aria-pressed={book.rating !== undefined && n <= book.rating}
                   className="rounded-full p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
                 >
                   <Star
@@ -359,7 +365,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
                       "h-7 w-7 transition-colors",
                       book.rating && n <= book.rating
                         ? "fill-gold text-gold"
-                        : "fill-transparent text-lavender",
+                        : "fill-transparent text-teal/70",
                     )}
                   />
                 </button>
@@ -397,6 +403,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
               options={OWNERSHIPS.map((o) => ({ value: o, label: OWNERSHIP_LABELS[o] }))}
               value={book.ownership}
               onChange={(v) => changeOwnership(v as Ownership)}
+              label="Shelf"
             />
           </section>
 
@@ -536,16 +543,19 @@ function Segmented({
   options,
   value,
   onChange,
+  label,
 }: {
   options: { value: string; label: string }[]
   value: string
   onChange: (value: string) => void
+  label: string
 }) {
   return (
-    <div className="inline-flex rounded-full border border-lavender bg-card p-1">
+    <div role="group" aria-label={label} className="inline-flex rounded-full border border-lavender bg-card p-1">
       {options.map((opt) => (
         <button
           key={opt.value}
+          aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
           className={cn(
             "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",

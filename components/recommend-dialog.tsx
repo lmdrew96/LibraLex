@@ -148,6 +148,7 @@ export function RecommendDialog({
                     <li key={f.userId}>
                       <button
                         type="button"
+                        aria-pressed={selected}
                         onClick={() => setToUserId(f.userId)}
                         className={cn(
                           "flex w-full items-center gap-3 rounded-2xl border p-2.5 text-left transition-colors",

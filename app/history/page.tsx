@@ -68,6 +68,7 @@ export default function HistoryPage() {
       <div className="mb-5 inline-flex rounded-full border border-lavender bg-card p-1">
         {TABS.map((t) => (
           <button
+            aria-pressed={tab === t.key}
             key={t.key}
             onClick={() => setTab(t.key)}
             className={cn(

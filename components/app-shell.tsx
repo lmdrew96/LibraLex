@@ -55,6 +55,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     (b) => b.dueDate !== undefined && loanStatus(b.dueDate) !== "comfortable",
   ).length
 
+  // Spoken with the badge count, e.g. "Loans, 2 due soon".
+  const badgeNoun = (href: string, n: number): string =>
+    href === "/loans"
+      ? "due soon"
+      : href === "/friends"
+        ? `friend request${n === 1 ? "" : "s"}`
+        : `new recommendation${n === 1 ? "" : "s"}`
+
   const badgeFor = (href: string): number => {
     if (href === "/loans") return dueSoon
     if (href === "/friends") return incoming?.length ?? 0
@@ -97,7 +105,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={href}
                 href={href}
-                aria-label={label}
+                aria-current={active ? "page" : undefined}
+                aria-label={badge > 0 ? `${label}, ${badge} ${badgeNoun(href, badge)}` : label}
                 className={cn(
                   "relative flex h-11 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition-colors",
                   active ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/60",

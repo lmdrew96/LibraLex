@@ -93,6 +93,7 @@ export default function FriendShelfPage({
             {TABS.map(({ key, label }) => (
               <button
                 key={key}
+                aria-pressed={tab === key}
                 onClick={() => setTab(key)}
                 className={cn(
                   "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",

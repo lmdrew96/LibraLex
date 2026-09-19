@@ -10,9 +10,11 @@ import { BookCover } from "@/components/book-cover"
 // under color-vision deficiency, where luminance is the channel that survives —
 // the dark↔light split matters as much as the hue.
 const statusDot: Record<ReadStatus, string> = {
-  unread: "bg-card ring-1 ring-teal/40",
-  reading: "bg-indigo",
-  read: "bg-green",
+  // A teal border gives every dot a ≥3:1 edge (sage "read" alone is ~1.75:1 on
+  // light); the fill still carries the state at a glance.
+  unread: "bg-card border border-teal",
+  reading: "bg-indigo border border-teal",
+  read: "bg-green border border-teal",
 }
 
 const dueColor: Record<string, string> = {
@@ -42,7 +44,9 @@ export function BookCard({ book, showDue = false }: { book: BookWithCover; showD
             statusDot[book.readStatus],
           )}
           title={READ_STATUS_LABELS[book.readStatus]}
+          aria-hidden
         />
+        <span className="sr-only">{READ_STATUS_LABELS[book.readStatus]}</span>
       </div>
       <div className="min-w-0">
         <p className="font-display truncate text-sm font-medium text-ink">{book.title}</p>
