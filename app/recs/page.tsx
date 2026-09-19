@@ -81,7 +81,7 @@ export default function RecsPage() {
       </div>
 
       <div className="mb-10">
-        <AskForABook />
+        <AskForABook library={allBooks ?? []} />
       </div>
 
       {/* Browse: taste-based, friends' shelves, and catalog discovery — moved here

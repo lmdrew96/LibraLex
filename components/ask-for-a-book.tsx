@@ -1,19 +1,23 @@
 "use client"
 
 import { useState, type FormEvent } from "react"
-import { useAction } from "convex/react"
+import { useAction, useQuery } from "convex/react"
 import { Search, Sparkles } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { CatalogSearchResult } from "@/convex/search"
+import type { BookWithCover } from "@/lib/types"
+import { bookKey } from "@/lib/book-key"
 import { OffShelfPick } from "@/components/off-shelf-pick"
 import { Skeleton } from "@/components/ui/skeleton"
 
 /** Free-text "ask for a book" search — embeds the query and matches it against
  *  the broad catalog seeded by convex/catalog.ts (see convex/search.ts), not
  *  any shelf. Explicit submit rather than live-as-you-type — each search is a
- *  real Gemini embedding call. */
-export function AskForABook() {
+ *  real Gemini embedding call. Hits already on your shelf or marked "not
+ *  interested" are hidden, like the other discovery rows. */
+export function AskForABook({ library }: { library: BookWithCover[] }) {
   const search = useAction(api.search.searchBooksByQuery)
+  const dismissed = useQuery(api.discover.dismissedKeys)
   const [query, setQuery] = useState("")
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState(false)
@@ -36,6 +40,9 @@ export function AskForABook() {
       setSearching(false)
     }
   }
+
+  const excluded = new Set<string>([...library.map(bookKey), ...(dismissed ?? [])])
+  const visible = results.filter((r) => !excluded.has(bookKey(r)))
 
   return (
     <section>
@@ -77,13 +84,17 @@ export function AskForABook() {
         <p className="text-sm text-[var(--color-overdue)]">Couldn’t search right now — try again.</p>
       )}
 
-      {!searching && !error && searchedFor && results.length === 0 && (
-        <p className="text-sm text-teal">No catalog matches for “{searchedFor}”.</p>
+      {!searching && !error && searchedFor && visible.length === 0 && (
+        <p className="text-sm text-teal">
+          {results.length === 0
+            ? `No catalog matches for “${searchedFor}”.`
+            : `Everything that matched “${searchedFor}” is already on your shelves.`}
+        </p>
       )}
 
-      {!searching && results.length > 0 && (
+      {!searching && visible.length > 0 && (
         <ul className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
-          {results.map((book) => (
+          {visible.map((book) => (
             <li key={book.dedupeKey} className="shrink-0">
               <OffShelfPick book={book} reason="Matches your search" layout="carousel" />
             </li>
