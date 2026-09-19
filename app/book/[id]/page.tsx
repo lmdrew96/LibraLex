@@ -11,7 +11,7 @@ import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
 import type { BookInfo as BookInfoData, BookWithCover, Ownership, ReadStatus } from "@/lib/types"
 import { OWNERSHIP_LABELS, READ_STATUS_LABELS } from "@/lib/types"
-import { dueLabel, loanStatus } from "@/lib/loans"
+import { dueLabel, finishDateInputValue, fromDateInput, loanStatus, toDateInput } from "@/lib/loans"
 import { useBookInfo } from "@/lib/use-book-info"
 import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
@@ -134,9 +134,9 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
-  // Finish date for a read book. A picked date is stored as UTC midnight of that
-  // day so it round-trips with the input and matches the stats' UTC year boundary;
-  // null is "don't remember" (counts all-time, not this year).
+  // Finish date for a read book. A picked date is stored as LOCAL midnight of that
+  // day (same bridge as loan dates), so it counts in the year you actually finished
+  // it; null is "don't remember" (counts all-time, not this year).
   const setFinishedAt = async (ms: number | null) => {
     try {
       await updateBook({ id: book._id, patch: { finishedAt: ms } })
@@ -316,14 +316,14 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
                 <input
                   id="finished-on"
                   type="date"
-                  max={new Date().toISOString().slice(0, 10)}
+                  max={toDateInput(Date.now())}
                   value={
                     book.finishedAt !== undefined
-                      ? new Date(book.finishedAt).toISOString().slice(0, 10)
+                      ? finishDateInputValue(book.finishedAt)
                       : ""
                   }
                   onChange={(e) =>
-                    setFinishedAt(e.target.value ? Date.parse(`${e.target.value}T00:00:00Z`) : null)
+                    setFinishedAt(e.target.value ? fromDateInput(e.target.value) : null)
                   }
                   className="rounded-xl border border-lavender bg-card px-2.5 py-1 text-ink focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
                 />

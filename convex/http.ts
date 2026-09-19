@@ -278,6 +278,32 @@ const civilDate = (ms: number, tz?: string | null): string => {
   return new Date(ms).toISOString().slice(0, 10)
 }
 
+/** The instant of local midnight on Jan 1 of `year` in `tz` (UTC if missing or
+ *  unsupported). Offset = the zone's wall clock at UTC midnight, read back as if
+ *  it were UTC, minus that instant — e.g. New York shows Dec 31 19:00 → −5h, so
+ *  local midnight is 05:00Z. */
+const startOfYearIn = (year: number, tz?: string | null): number => {
+  const utcMidnight = Date.UTC(year, 0, 1)
+  if (!tz) return utcMidnight
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(new Date(utcMidnight))
+    const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value)
+    const wallAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"))
+    return utcMidnight - (wallAsUtc - utcMidnight)
+  } catch {
+    return utcMidnight
+  }
+}
+
 /** Whole calendar days from `now` until `dueDate`, on the user's local day
  *  boundaries. Positive = days left, 0 = due today, negative = overdue. */
 const daysUntilDue = (dueDate: number, now: number, tz?: string | null): number => {
@@ -714,7 +740,7 @@ async function dispatch(
       const tz = await ctx.runQuery(internal.mcpData.timeZoneForUser, { userId })
       const now = Date.now()
       const year = Number(civilDate(now, tz).slice(0, 4))
-      const startOfYear = Date.parse(`${year}-01-01T00:00:00Z`)
+      const startOfYear = startOfYearIn(year, tz)
       const stats = await ctx.runQuery(internal.mcpData.readingStatsForUser, {
         userId,
         startOfYear,

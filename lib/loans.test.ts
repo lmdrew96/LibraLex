@@ -3,6 +3,7 @@ import {
   daysUntilDue,
   defaultDueDate,
   dueLabel,
+  finishDateInputValue,
   fromDateInput,
   LOAN_PERIOD_MS,
   loanDatesError,
@@ -133,5 +134,15 @@ describe("loan date validation", () => {
     expect(renewDateError("", now)).not.toBeNull()
     expect(renewDateError("2025-06-14", now)).not.toBeNull()
     expect(renewDateError("2025-06-15", now)).toBeNull()
+  })
+})
+
+describe("finishDateInputValue", () => {
+  it("round-trips a picked local date", () => {
+    expect(finishDateInputValue(fromDateInput("2026-03-10"))).toBe("2026-03-10")
+  })
+
+  it("reads legacy UTC-midnight picks as their UTC date", () => {
+    expect(finishDateInputValue(Date.UTC(2026, 2, 10))).toBe("2026-03-10")
   })
 })

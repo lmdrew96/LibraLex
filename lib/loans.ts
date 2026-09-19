@@ -60,6 +60,13 @@ export const fromDateInput = (value: string): number => {
   return new Date(y, m - 1, d).getTime()
 }
 
+/** A stored finish date → "YYYY-MM-DD" for the date picker. Picks made before
+ *  v0.44.6 were stored as UTC midnight; reading those in local time shows the
+ *  previous day west of UTC, so an exact UTC-midnight value is read as a UTC date.
+ *  (Local midnight only equals UTC midnight in UTC±0, where both readings agree.) */
+export const finishDateInputValue = (ms: number): string =>
+  ms % MS_PER_DAY === 0 ? new Date(ms).toISOString().slice(0, 10) : toDateInput(ms)
+
 // ── Date-input validation (returns a user-facing message, or null when valid) ──
 
 const isDateInput = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value)
