@@ -47,10 +47,6 @@ export default defineSchema({
     averageRating: v.optional(v.number()), // GB community average (0–5) — shown alongside the LibraLex community average
     ratingsCount: v.optional(v.number()), // number of GB ratings behind averageRating
 
-    // DEPRECATED — vectors moved to the `bookEmbeddings` table (v0.49). Kept only
-    // so pre-migration rows validate; migrations:moveEmbeddingsToTable copies each
-    // one over and clears it here. Never written or read by live code.
-    embedding: v.optional(v.array(v.float64())),
 
     // ── shelf relationship ────────────────────────────────────────────────────
     // "none" = read/encountered but not in your possession (a friend's copy, a
