@@ -7,6 +7,7 @@ import { identityKey } from "./discover"
 import { enrichBook } from "./enrich"
 import { embedBookWithRetry } from "./embed"
 import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
+import { embeddingFor, hasEmbedding, saveEmbedding } from "./bookEmbeddings"
 import { rollTasteVector } from "./tasteVector"
 import { assertMaxLength, LOAN_PERIOD_MS, TEXT_LIMITS } from "./util"
 
@@ -169,7 +170,10 @@ export const addOrMoveBook = async (
 
 export const _getBook = internalQuery({
   args: { id: v.id("books") },
-  handler: async (ctx, { id }): Promise<Doc<"books"> | null> => ctx.db.get(id),
+  handler: async (ctx, { id }): Promise<(Doc<"books"> & { hasEmbedding: boolean }) | null> => {
+    const book = await ctx.db.get(id)
+    return book ? { ...book, hasEmbedding: await hasEmbedding(ctx, id) } : null
+  },
 })
 
 // Patch enrichment in, never blanking a populated field (flaky fetches return
@@ -206,13 +210,8 @@ export const _applyServerEnrichment = internalMutation({
       subjects: args.subjects?.length ? normalizeSubjects(args.subjects) : book.subjects,
       averageRating: args.averageRating ?? book.averageRating,
       ratingsCount: args.ratingsCount ?? book.ratingsCount,
-      embedding: args.embedding ?? book.embedding,
     })
-    const gotFirstEmbedding = !book.embedding?.length && (args.embedding?.length ?? 0) > 0
-    const isTasteSource = book.readStatus === "read" || book.readStatus === "reading"
-    if (gotFirstEmbedding && isTasteSource) {
-      await rollTasteVector(ctx, book.userId, args.embedding!)
-    }
+    if (args.embedding) await saveEmbedding(ctx, book, args.embedding)
   },
 })
 
@@ -235,7 +234,7 @@ export const enrichBookById = internalAction({
     }).catch(() => null)
     const description = enriched?.description ?? book.description
     const subjects = enriched?.subjects ?? book.subjects
-    const embedding = book.embedding?.length
+    const embedding = book.hasEmbedding
       ? undefined
       : ((await embedBookWithRetry({
           title: book.title,
@@ -243,7 +242,7 @@ export const enrichBookById = internalAction({
           description,
           subjects,
         })) ?? undefined)
-    const embedFailed = !book.embedding?.length && !embedding
+    const embedFailed = !book.hasEmbedding && !embedding
     if (!enriched && !embedding) return { embedFailed }
     await ctx.runMutation(internal.shelfAdd._applyServerEnrichment, {
       id,
@@ -271,8 +270,10 @@ export const _missingEmbeddingPage = internalQuery({
   args: { cursor: v.union(v.string(), v.null()) },
   handler: async (ctx, { cursor }) => {
     const page = await ctx.db.query("books").paginate({ cursor, numItems: 100 })
+    const missing: Id<"books">[] = []
+    for (const b of page.page) if (!(await hasEmbedding(ctx, b._id))) missing.push(b._id)
     return {
-      ids: page.page.filter((b) => !b.embedding?.length).map((b) => b._id),
+      ids: missing,
       cursor: page.continueCursor,
       isDone: page.isDone,
     }
@@ -349,7 +350,7 @@ export const rollTasteOnStart = async (
 ): Promise<void> => {
   const was = book.readStatus === "read" || book.readStatus === "reading"
   const now = next === "read" || next === "reading"
-  if (!was && now && book.embedding?.length) {
-    await rollTasteVector(ctx, book.userId, book.embedding)
-  }
+  if (was || !now) return
+  const vec = await embeddingFor(ctx, book._id)
+  if (vec) await rollTasteVector(ctx, book.userId, vec.embedding)
 }

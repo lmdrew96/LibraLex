@@ -11,7 +11,7 @@ import {
   type GoogleVolume,
 } from "./googleBooks"
 import { embedBookWithRetry } from "./embed"
-import { rollTasteVector } from "./tasteVector"
+import { hasEmbedding, saveEmbedding } from "./bookEmbeddings"
 import { identityKey } from "./discover"
 
 // One-off (re-runnable) enrich + normalize backfill for the existing shelf.
@@ -43,16 +43,21 @@ import { identityKey } from "./discover"
 //   npx convex env set GOOGLE_BOOKS_API_KEY <key>
 //   npx convex env set GEMINI_API_KEY <key>
 
-// One page of the table. Paged so no single query reads every book (with their
-// 1536-float embeddings) at once — that's what hits Convex's per-query read limit.
+// One page of the table, each book tagged with whether it has a vector yet
+// (vectors live in bookEmbeddings). Paged so no single query reads every book at
+// once — an unpaged scan is what hit Convex's per-query read limit before.
+type BookPageRow = Doc<"books"> & { hasEmbedding: boolean }
 export const _booksPage = internalQuery({
   args: { cursor: v.union(v.string(), v.null()) },
   handler: async (
     ctx,
     { cursor },
-  ): Promise<{ page: Doc<"books">[]; cursor: string; isDone: boolean }> => {
+  ): Promise<{ page: BookPageRow[]; cursor: string; isDone: boolean }> => {
     const res = await ctx.db.query("books").paginate({ cursor, numItems: 50 })
-    return { page: res.page, cursor: res.continueCursor, isDone: res.isDone }
+    const page = await Promise.all(
+      res.page.map(async (b) => ({ ...b, hasEmbedding: await hasEmbedding(ctx, b._id) })),
+    )
+    return { page, cursor: res.continueCursor, isDone: res.isDone }
   },
 })
 
@@ -71,15 +76,12 @@ export const _applyEnrichment = internalMutation({
     ratingsCount: v.optional(v.number()),
     embedding: v.optional(v.array(v.float64())),
   },
-  handler: async (ctx, { id, ...fields }) => {
+  handler: async (ctx, { id, embedding, ...fields }) => {
     const book = await ctx.db.get(id)
     if (!book) return
     await ctx.db.patch(id, { ...fields, coverId: undefined })
     // Same rule as the add path: a read/reading book's first vector joins the taste vector.
-    const gotFirstEmbedding = !book.embedding?.length && (fields.embedding?.length ?? 0) > 0
-    if (gotFirstEmbedding && (book.readStatus === "read" || book.readStatus === "reading")) {
-      await rollTasteVector(ctx, book.userId, fields.embedding!)
-    }
+    if (embedding) await saveEmbedding(ctx, book, embedding)
   },
 })
 
@@ -107,10 +109,10 @@ type BackfillResult = {
 export const enrichAllBooks = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun = true }): Promise<BackfillResult> => {
-    const books: Doc<"books">[] = []
+    const books: BookPageRow[] = []
     let cursor: string | null = null
     for (;;) {
-      const res: { page: Doc<"books">[]; cursor: string; isDone: boolean } = await ctx.runQuery(
+      const res: { page: BookPageRow[]; cursor: string; isDone: boolean } = await ctx.runQuery(
         internal.backfill._booksPage,
         { cursor },
       )
@@ -151,21 +153,21 @@ export const enrichAllBooks = internalAction({
         subjects: enriched.subjects ?? b.subjects,
         averageRating: enriched.averageRating ?? b.averageRating,
         ratingsCount: enriched.ratingsCount ?? b.ratingsCount,
-        embedding: b.embedding,
       }
 
       // Embedding is a separate (costlier) call, so only attempt it when the book
       // doesn't already have one — same preserve-on-empty rule as the biblio
-      // fields: a failed embed leaves `embedding` at its existing value (undefined).
-      const embeddingMissing = !b.embedding || b.embedding.length === 0
+      // fields: a failed embed leaves `embedding` undefined and nothing is written.
+      const embeddingMissing = !b.hasEmbedding
+      let embedding: number[] | undefined
       if (embeddingMissing) {
-        const embedded = await embedBookWithRetry({
-          title: b.title,
-          authors: next.authors,
-          description: next.description,
-          subjects: next.subjects,
-        })
-        if (embedded) next.embedding = embedded
+        embedding =
+          (await embedBookWithRetry({
+            title: b.title,
+            authors: next.authors,
+            description: next.description,
+            subjects: next.subjects,
+          })) ?? undefined
       }
 
       const changedFields =
@@ -180,7 +182,7 @@ export const enrichAllBooks = internalAction({
         !sameJson(next.subjects, b.subjects) ||
         next.averageRating !== b.averageRating ||
         next.ratingsCount !== b.ratingsCount ||
-        next.embedding !== b.embedding
+        embedding !== undefined
 
       if (!changedFields) continue
 
@@ -191,12 +193,12 @@ export const enrichAllBooks = internalAction({
       if (!b.subjects?.length && next.subjects?.length) change.addedSubjects = next.subjects.length
       if (!b.description && next.description) change.addedDescription = true
       if (b.averageRating === undefined && next.averageRating !== undefined) change.addedRating = true
-      if (embeddingMissing && next.embedding) change.addedEmbedding = true
+      if (embedding) change.addedEmbedding = true
       if (willClearCoverId) change.clearedCoverId = true
       changes.push(change)
 
       if (!dryRun) {
-        await ctx.runMutation(internal.backfill._applyEnrichment, { id: b._id, ...next })
+        await ctx.runMutation(internal.backfill._applyEnrichment, { id: b._id, ...next, embedding })
       }
     }
 

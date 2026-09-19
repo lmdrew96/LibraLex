@@ -47,10 +47,9 @@ export default defineSchema({
     averageRating: v.optional(v.number()), // GB community average (0–5) — shown alongside the LibraLex community average
     ratingsCount: v.optional(v.number()), // number of GB ratings behind averageRating
 
-    // Gemini gemini-embedding-2 embedding of title/authors/description/subjects
-    // (see convex/embed.ts) — populated on add (convex/enrich.ts hook) and by the
-    // convex/backfill.ts batch job. Absent until embedded; never overwritten with
-    // an empty vector on re-embed (see backfill's preserve-on-empty rule).
+    // DEPRECATED — vectors moved to the `bookEmbeddings` table (v0.49). Kept only
+    // so pre-migration rows validate; migrations:moveEmbeddingsToTable copies each
+    // one over and clears it here. Never written or read by live code.
     embedding: v.optional(v.array(v.float64())),
 
     // ── shelf relationship ────────────────────────────────────────────────────
@@ -85,11 +84,23 @@ export default defineSchema({
     // Cross-user lookups by book identity — power the LibraLex community average,
     // which collects every user's copy of a title and averages their ratings.
     .index("by_workKey", ["workKey"])
-    .index("by_isbn", ["isbn"])
-    // Nearest-neighbor search over embeddings (see convex/gemini.ts for the
-    // dimension count). filterFields lets a search scope to one user's shelf
-    // (recommendForYou-style) or OR across a friend list (FriendPicks) without a
-    // full table scan.
+    .index("by_isbn", ["isbn"]),
+
+  // One Gemini gemini-embedding-2 vector per book (title/authors/description/
+  // subjects — see convex/embed.ts), split out of `books` so every scan of book
+  // docs (friend shelves, the MCP recommender, backfills) doesn't also drag ~12KB
+  // of floats per row toward Convex's per-execution read limit. Written by the
+  // enrich-on-add path + backfills via convex/bookEmbeddings.ts; deleted with its
+  // book. userId is denormalized from the book so vector search can filter by it.
+  bookEmbeddings: defineTable({
+    bookId: v.id("books"),
+    userId: v.string(), // the book's owner — same value books.userId uses
+    embedding: v.array(v.float64()),
+  })
+    .index("by_book", ["bookId"])
+    // Nearest-neighbor search (see convex/gemini.ts for the dimension count).
+    // filterFields lets a search scope to one user's shelf or OR across a friend
+    // list (FriendPicks) without a full table scan.
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 1536,

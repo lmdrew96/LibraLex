@@ -6,6 +6,7 @@ import { normalizeAuthors } from "./normalize"
 import { assertMaxLength, LOAN_PERIOD_MS, TEXT_LIMITS } from "./util"
 import { addOrMoveBook, readStatusStamps, rollTasteOnStart, type AddResult } from "./shelfAdd"
 import { internal } from "./_generated/api"
+import { deleteEmbedding } from "./bookEmbeddings"
 
 // Cached enrichment fields shared by addBook + the re-fetch action. Optional —
 // produced by the enrich-once pipeline (lib/enrich.ts), stored so reads need no
@@ -359,6 +360,7 @@ export const deleteBook = mutation({
     const userId = await requireUserId(ctx)
     const book = await getOwnedBook(ctx, userId, args.id)
     if (book.coverStorageId) await ctx.storage.delete(book.coverStorageId)
+    await deleteEmbedding(ctx, args.id)
     await ctx.db.delete(args.id)
   },
 })

@@ -258,7 +258,7 @@ export const _friendVectorInputs = internalQuery({
 export const _assembleVectorCandidates = internalQuery({
   args: {
     me: v.string(),
-    hits: v.array(v.object({ id: v.id("books"), score: v.number() })),
+    hits: v.array(v.object({ id: v.id("bookEmbeddings"), score: v.number() })),
   },
   handler: async (ctx, { me, hits }): Promise<ScoredFriendCandidate[]> => {
     const mine = await ctx.db
@@ -276,8 +276,10 @@ export const _assembleVectorCandidates = internalQuery({
     }
 
     for (const { id, score } of hits) {
-      const b = await ctx.db.get(id)
-      if (!b || b.userId === me) continue
+      const vec = await ctx.db.get(id)
+      if (!vec || vec.userId === me) continue
+      const b = await ctx.db.get(vec.bookId)
+      if (!b) continue
       if (!isVouchworthy(b)) continue
 
       const ownerProfile = await profileForCached(b.userId)
@@ -320,7 +322,7 @@ export const friendPicksVector = action({
     const inputs = await ctx.runQuery(internal.discover._friendVectorInputs, { me })
     if (!inputs.queryVector || inputs.friendIds.length === 0) return []
 
-    const hits = await ctx.vectorSearch("books", "by_embedding", {
+    const hits = await ctx.vectorSearch("bookEmbeddings", "by_embedding", {
       vector: inputs.queryVector,
       limit: 128,
       filter: (q) =>

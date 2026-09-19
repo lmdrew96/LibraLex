@@ -9,6 +9,7 @@
  */
 
 import type * as backfill from "../backfill.js";
+import type * as bookEmbeddings from "../bookEmbeddings.js";
 import type * as books from "../books.js";
 import type * as catalog from "../catalog.js";
 import type * as crons from "../crons.js";
@@ -41,6 +42,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   backfill: typeof backfill;
+  bookEmbeddings: typeof bookEmbeddings;
   books: typeof books;
   catalog: typeof catalog;
   crons: typeof crons;

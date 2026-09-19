@@ -45,18 +45,20 @@ export const seedAllTasteVectors = internalMutation({
         .query("books")
         .withIndex("by_user", (q) => q.eq("userId", user.userId))
         .collect()
-      const sources = books.filter(
-        (b) =>
-          (b.readStatus === "read" || b.readStatus === "reading") &&
-          b.embedding &&
-          b.embedding.length > 0,
-      )
+      const sources: number[][] = []
+      for (const b of books) {
+        if (b.readStatus !== "read" && b.readStatus !== "reading") continue
+        const vec = await ctx.db
+          .query("bookEmbeddings")
+          .withIndex("by_book", (q) => q.eq("bookId", b._id))
+          .unique()
+        if (vec?.embedding.length) sources.push(vec.embedding)
+      }
       if (sources.length === 0) continue
 
-      const dims = sources[0].embedding!.length
+      const dims = sources[0].length
       const mean = new Array(dims).fill(0)
-      for (const b of sources) {
-        const vec = b.embedding!
+      for (const vec of sources) {
         for (let i = 0; i < dims; i++) mean[i] += vec[i] / sources.length
       }
       await ctx.db.patch(user._id, { tasteVector: mean, tasteVectorCount: sources.length })
