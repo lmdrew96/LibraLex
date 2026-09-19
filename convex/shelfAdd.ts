@@ -98,8 +98,7 @@ export const addOrMoveBook = async (
     if (input.ownership === "none" && readStatus === "unread") readStatus = "read"
     if (readStatus !== existing.readStatus) {
       updates.readStatus = readStatus
-      if (readStatus === "reading" && !existing.startedAt) updates.startedAt = now
-      if (readStatus === "read" && !existing.finishedAt) updates.finishedAt = now
+      Object.assign(updates, readStatusStamps(existing, readStatus, now))
     }
     if (input.ownership === "library") {
       const checkoutDate = input.checkoutDate ?? now
@@ -115,6 +114,7 @@ export const addOrMoveBook = async (
       updates.libraryName = undefined
     }
     await ctx.db.patch(existing._id, updates)
+    await rollTasteOnStart(ctx, existing, readStatus)
     return {
       status: "moved",
       id: existing._id,
@@ -256,3 +256,44 @@ export const enrichBookById = internalAction({
     })
   },
 })
+
+// ── Read-status transitions (shared by books.updateBook + the MCP door) ─────
+
+// Date stamps for a read-status change. Starting a book stamps startedAt the
+// first time, and again on a RE-read (read → reading). Finishing stamps finishedAt
+// the first time, and again when the current read started after the last finish
+// — so a re-read finished this year counts this year. The previous finish date
+// stays until then, so abandoning a re-read doesn't erase last year's read.
+export const readStatusStamps = (
+  book: Pick<Doc<"books">, "readStatus" | "startedAt" | "finishedAt">,
+  next: ReadStatus,
+  now: number,
+): Partial<Pick<Doc<"books">, "startedAt" | "finishedAt">> => {
+  if (next === book.readStatus) return {}
+  if (next === "reading" && (!book.startedAt || book.readStatus === "read")) {
+    return { startedAt: now }
+  }
+  if (next === "read") {
+    const rereadInProgress =
+      book.startedAt !== undefined &&
+      book.finishedAt !== undefined &&
+      book.startedAt > book.finishedAt
+    if (!book.finishedAt || rereadInProgress) return { finishedAt: now }
+  }
+  return {}
+}
+
+// Roll a book into the taste vector the first time it becomes read/reading
+// (see convex/tasteVector.ts). No-op until the book has an embedding —
+// _applyServerEnrichment covers the embedding-arrives-later case.
+export const rollTasteOnStart = async (
+  ctx: MutationCtx,
+  book: Doc<"books">,
+  next: ReadStatus,
+): Promise<void> => {
+  const was = book.readStatus === "read" || book.readStatus === "reading"
+  const now = next === "read" || next === "reading"
+  if (!was && now && book.embedding?.length) {
+    await rollTasteVector(ctx, book.userId, book.embedding)
+  }
+}

@@ -4,8 +4,7 @@ import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { normalizeAuthors } from "./normalize"
 import { LOAN_PERIOD_MS } from "./util"
-import { rollTasteVector } from "./tasteVector"
-import { addOrMoveBook, type AddResult } from "./shelfAdd"
+import { addOrMoveBook, readStatusStamps, rollTasteOnStart, type AddResult } from "./shelfAdd"
 import { internal } from "./_generated/api"
 
 // Cached enrichment fields shared by addBook + the re-fetch action. Optional —
@@ -215,9 +214,8 @@ export const updateBook = mutation({
       updates.authors = normalizeAuthors(patch.authors)
     }
 
-    if (patch.readStatus === "reading" && !book.startedAt) {
-      updates.startedAt = now
-    }
+    const stamps = patch.readStatus ? readStatusStamps(book, patch.readStatus, now) : {}
+    if (stamps.startedAt !== undefined) updates.startedAt = stamps.startedAt
 
     // Finish date drives the "read this year" stats. An explicit value from the
     // date control wins (number sets it; null clears it — the read still counts
@@ -226,8 +224,8 @@ export const updateBook = mutation({
     // clear it (or use the bulk "undate" action in Settings).
     if (finishedAtInput !== undefined) {
       updates.finishedAt = finishedAtInput ?? undefined
-    } else if (patch.readStatus === "read" && !book.finishedAt) {
-      updates.finishedAt = now
+    } else if (stamps.finishedAt !== undefined) {
+      updates.finishedAt = stamps.finishedAt
     }
 
     // Switching off the library shelf retires its loan fields (setting an
@@ -241,17 +239,8 @@ export const updateBook = mutation({
 
     await ctx.db.patch(args.id, updates)
 
-    // A book newly finished/started feeds the taste vector (see
-    // convex/tasteVector.ts). Books added straight to "read" get picked up here
-    // too, on their next status touch, IF they already have an embedding by
-    // then — shelfAdd._applyServerEnrichment handles the more common case where
-    // the embedding lands after the book's already a taste source.
-    const wasTasteSource = book.readStatus === "read" || book.readStatus === "reading"
-    const nextReadStatus = updates.readStatus ?? book.readStatus
-    const isTasteSourceNow = nextReadStatus === "read" || nextReadStatus === "reading"
-    if (!wasTasteSource && isTasteSourceNow && book.embedding?.length) {
-      await rollTasteVector(ctx, userId, book.embedding)
-    }
+    // A book newly finished/started feeds the taste vector.
+    if (patch.readStatus) await rollTasteOnStart(ctx, book, patch.readStatus)
   },
 })
 

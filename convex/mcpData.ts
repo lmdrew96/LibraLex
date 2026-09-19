@@ -10,7 +10,7 @@ import {
 } from "./discover"
 import { hiddenShelfSet, profileFor, toPublicProfile } from "./users"
 import { areFriends } from "./friends"
-import { addOrMoveBook, type AddResult } from "./shelfAdd"
+import { addOrMoveBook, readStatusStamps, rollTasteOnStart, type AddResult } from "./shelfAdd"
 
 // Data layer for the MCP door (convex/http.ts). Every function here is INTERNAL —
 // callable only from other Convex functions, never the public internet. The sole
@@ -222,8 +222,8 @@ export const addBookForUser = internalMutation({
 
 // Update a book's reading state from chat ("I finished Dune, 5 stars", "I started
 // the Hobbit"). Resolves the book by title across the WHOLE shelf, then applies the
-// same transitions as books.updateBook: starting stamps startedAt once, finishing
-// stamps finishedAt once. Rating/review are validated by the door (1–5).
+// same transitions as books.updateBook (shelfAdd.readStatusStamps — re-reads
+// restamp) and rolls the taste vector. Rating/review are validated by the door (1–5).
 export const setReadingStatusForUser = internalMutation({
   args: {
     userId: v.string(),
@@ -246,13 +246,14 @@ export const setReadingStatusForUser = internalMutation({
     const updates: Partial<Doc<"books">> = {}
     if (args.readStatus !== undefined) {
       updates.readStatus = args.readStatus
-      if (args.readStatus === "reading" && !book.startedAt) updates.startedAt = now
-      if (args.readStatus === "read" && !book.finishedAt) updates.finishedAt = now
+      Object.assign(updates, readStatusStamps(book, args.readStatus, now))
     }
     if (args.rating !== undefined) updates.rating = args.rating
     if (args.review !== undefined) updates.review = args.review
 
     await ctx.db.patch(book._id, updates)
+    // Same taste-vector training as the web app's status change.
+    if (args.readStatus !== undefined) await rollTasteOnStart(ctx, book, args.readStatus)
     return {
       status: "updated" as const,
       title: book.title,
