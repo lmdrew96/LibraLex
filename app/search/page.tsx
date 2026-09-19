@@ -28,10 +28,11 @@ export default function SearchPage() {
         <input
           autoFocus
           type="text"
+          aria-label="Search books by title or author"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by title or author…"
-          className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-4 text-base text-ink placeholder:text-teal/60 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
+          className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-4 text-base text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
         />
       </div>
 

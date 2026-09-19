@@ -59,3 +59,23 @@ export const fromDateInput = (value: string): number => {
   const [y, m, d] = value.split("-").map(Number)
   return new Date(y, m - 1, d).getTime()
 }
+
+// ── Date-input validation (returns a user-facing message, or null when valid) ──
+
+const isDateInput = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value)
+
+/** Checkout + due dates for a new loan. An emptied date input would otherwise
+ *  save as NaN, and a due date before checkout makes the loan instantly overdue. */
+export const loanDatesError = (checkout: string, due: string): string | null => {
+  if (!isDateInput(checkout)) return "Pick the day you checked it out."
+  if (!isDateInput(due)) return "Pick a due date."
+  if (fromDateInput(due) < fromDateInput(checkout)) return "The due date can't be before checkout."
+  return null
+}
+
+/** A renewal's new due date: required, and not in the past. */
+export const renewDateError = (due: string, now: number = Date.now()): string | null => {
+  if (!isDateInput(due)) return "Pick a new due date."
+  if (fromDateInput(due) < startOfLocalDay(now)) return "That date has already passed."
+  return null
+}

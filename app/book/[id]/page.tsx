@@ -371,12 +371,13 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
           <section className="mt-5">
             <h2 className="mb-2 text-sm font-semibold text-teal">Review</h2>
             <textarea
+              aria-label="Your review"
               value={reviewValue}
               onChange={(e) => setReview(e.target.value)}
               onBlur={saveReview}
               placeholder="A few words for future you…"
               rows={4}
-              className="w-full rounded-2xl border border-lavender bg-card p-3 text-ink placeholder:text-teal/50 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
+              className="w-full rounded-2xl border border-lavender bg-card p-3 text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
             />
             <p className="mt-1 text-xs text-teal/90">Saves when you click away.</p>
           </section>

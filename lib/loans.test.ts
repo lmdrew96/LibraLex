@@ -5,7 +5,9 @@ import {
   dueLabel,
   fromDateInput,
   LOAN_PERIOD_MS,
+  loanDatesError,
   loanStatus,
+  renewDateError,
   toDateInput,
 } from "./loans"
 
@@ -115,5 +117,21 @@ describe("date-input bridges", () => {
         expect(d.getMonth()).toBe(5) // June (0-indexed)
         expect(d.getDate()).toBe(15)
       })
+  })
+})
+
+describe("loan date validation", () => {
+  it("rejects empty and inverted loan dates", () => {
+    expect(loanDatesError("", "2025-06-20")).not.toBeNull()
+    expect(loanDatesError("2025-06-10", "")).not.toBeNull()
+    expect(loanDatesError("2025-06-10", "2025-06-09")).not.toBeNull()
+    expect(loanDatesError("2025-06-10", "2025-06-10")).toBeNull()
+  })
+
+  it("rejects empty or past renewal dates, allows today", () => {
+    const now = new Date(2025, 5, 15, 18).getTime()
+    expect(renewDateError("", now)).not.toBeNull()
+    expect(renewDateError("2025-06-14", now)).not.toBeNull()
+    expect(renewDateError("2025-06-15", now)).toBeNull()
   })
 })

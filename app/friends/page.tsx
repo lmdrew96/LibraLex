@@ -161,11 +161,12 @@ export default function FriendsPage() {
           className="flex flex-wrap items-center gap-3"
         >
           <input
+            aria-label="Friend code"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             placeholder="SHELF-XXXX"
             autoCapitalize="characters"
-            className="h-11 min-w-0 flex-1 rounded-full border border-lavender bg-surface px-4 font-mono uppercase tracking-wider text-ink placeholder:text-teal/50 placeholder:tracking-normal focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
+            className="h-11 min-w-0 flex-1 rounded-full border border-lavender bg-surface px-4 font-mono uppercase tracking-wider text-ink placeholder:text-teal/90 placeholder:tracking-normal focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
           />
           <Button type="submit" disabled={!code.trim() || adding}>
             <UserPlus className="h-4 w-4" />

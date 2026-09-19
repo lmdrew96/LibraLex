@@ -168,15 +168,16 @@ export function RecommendDialog({
               </ul>
 
               <h3 className="mb-2 mt-5 text-sm font-semibold text-teal">
-                Note <span className="font-normal text-teal/60">(optional)</span>
+                Note <span className="font-normal text-teal/90">(optional)</span>
               </h3>
               <textarea
+                aria-label="Note (optional)"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Why they'll love it…"
                 rows={3}
                 maxLength={500}
-                className="w-full rounded-2xl border border-lavender bg-card p-3 text-ink placeholder:text-teal/50 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
+                className="w-full rounded-2xl border border-lavender bg-card p-3 text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/20"
               />
 
               <Button

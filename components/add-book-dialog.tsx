@@ -8,7 +8,7 @@ import { api } from "@/convex/_generated/api"
 import type { BookSearchResult, Ownership } from "@/lib/types"
 import { bookArgs } from "@/lib/enrich-on-add"
 import { addResultMessage } from "@/lib/add-result"
-import { defaultDueDate, dueLabel, fromDateInput, toDateInput } from "@/lib/loans"
+import { defaultDueDate, dueLabel, fromDateInput, loanDatesError, toDateInput } from "@/lib/loans"
 import { useBookSearch } from "@/lib/use-book-search"
 import { BarcodeScanner } from "@/components/barcode-scanner"
 import { BookCover } from "@/components/book-cover"
@@ -126,6 +126,7 @@ export function AddBookDialog({
 
   const save = async (ownership: Ownership) => {
     if (!selected || saving) return
+    if (ownership === "library" && loanDatesError(checkoutInput, dueInput)) return
     setSaving(true)
     const title = selected.title
     const extra =
@@ -237,7 +238,8 @@ export function AddBookDialog({
               checkoutInput={checkoutInput}
               setCheckoutInput={(v) => {
                 setCheckoutInput(v)
-                setDueInput(toDateInput(defaultDueDate(fromDateInput(v))))
+                // Only re-derive the due date from a real date (a cleared input is "").
+                if (v) setDueInput(toDateInput(defaultDueDate(fromDateInput(v))))
               }}
               dueInput={dueInput}
               setDueInput={setDueInput}
@@ -295,10 +297,11 @@ function SearchStep({
           <input
             autoFocus
             type="text"
+            aria-label="Search by title or author"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by title or author…"
-            className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-4 text-base text-ink placeholder:text-teal/60 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
+            className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-4 text-base text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
           />
         </div>
         <button
@@ -387,6 +390,7 @@ function OwnershipStep({
   saving: boolean
   onSave: (ownership: Ownership) => void
 }) {
+  const dateError = libraryMode ? loanDatesError(checkoutInput, dueInput) : null
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-4">
@@ -439,8 +443,19 @@ function OwnershipStep({
               />
             </label>
           </div>
-          <p className="text-sm text-teal">{dueLabel(fromDateInput(dueInput))} · 3-week default, editable.</p>
-          <Button variant="primary" className="w-full" disabled={saving} onClick={() => onSave("library")}>
+          {dateError ? (
+            <p role="alert" className="text-sm font-medium text-ink">
+              {dateError}
+            </p>
+          ) : (
+            <p className="text-sm text-teal">{dueLabel(fromDateInput(dueInput))} · 3-week default, editable.</p>
+          )}
+          <Button
+            variant="primary"
+            className="w-full"
+            disabled={saving || dateError !== null}
+            onClick={() => onSave("library")}
+          >
             Add to library loans
           </Button>
         </div>
@@ -474,7 +489,7 @@ function ManualStep({
   onSubmit: () => void
 }) {
   const inputClass =
-    "h-11 w-full rounded-xl border border-lavender bg-card px-3 text-ink placeholder:text-teal/50 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
+    "h-11 w-full rounded-xl border border-lavender bg-card px-3 text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
   return (
     <form
       onSubmit={(e) => {
@@ -489,11 +504,15 @@ function ManualStep({
         </p>
       )}
       <label className="flex flex-col gap-1 text-sm font-medium text-teal">
-        Title <span className="text-[var(--color-overdue)]">*</span>
+        <span>
+          Title <span className="font-normal text-teal/90">(required)</span>
+        </span>
         <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} className={inputClass} required />
       </label>
       <label className="flex flex-col gap-1 text-sm font-medium text-teal">
-        Author <span className="text-[var(--color-overdue)]">*</span>
+        <span>
+          Author <span className="font-normal text-teal/90">(required)</span>
+        </span>
         <input value={author} onChange={(e) => setAuthor(e.target.value)} className={inputClass} required />
       </label>
       <div className="grid grid-cols-2 gap-3">

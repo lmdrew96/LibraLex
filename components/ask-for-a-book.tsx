@@ -55,10 +55,11 @@ export function AskForABook({ library }: { library: BookWithCover[] }) {
         <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-teal" />
         <input
           type="text"
+          aria-label="Describe the kind of book you want"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Something atmospheric and slow…"
-          className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-24 text-base text-ink placeholder:text-teal/60 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
+          className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-24 text-base text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
         />
         <button
           type="submit"

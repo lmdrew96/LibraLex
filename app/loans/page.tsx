@@ -8,7 +8,7 @@ import { format } from "date-fns"
 import { Library, RotateCcw, CalendarClock } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { BookWithCover } from "@/lib/types"
-import { defaultDueDate, dueLabel, fromDateInput, loanStatus, toDateInput } from "@/lib/loans"
+import { defaultDueDate, dueLabel, fromDateInput, loanStatus, renewDateError, toDateInput } from "@/lib/loans"
 import { cn } from "@/lib/utils"
 import { AppShell } from "@/components/app-shell"
 import { AddBookDialog } from "@/components/add-book-dialog"
@@ -151,7 +151,10 @@ function LoanRow({ loan }: { loan: BookWithCover }) {
     }
   }
 
+  const renewError = renewDateError(renewInput)
+
   const doRenew = async () => {
+    if (renewError) return
     try {
       await renewLoan({ id: loan._id, newDueDate: fromDateInput(renewInput) })
       toast.success(`Renewed “${loan.title}”.`)
@@ -202,9 +205,14 @@ function LoanRow({ loan }: { loan: BookWithCover }) {
                 className="h-10 rounded-xl border border-lavender bg-card px-3 text-ink focus:border-teal focus:outline-none"
               />
             </label>
-            <Button size="sm" onClick={doRenew}>
+            <Button size="sm" onClick={doRenew} disabled={renewError !== null}>
               Save
             </Button>
+            {renewError && (
+              <p role="alert" className="w-full text-sm font-medium text-ink">
+                {renewError}
+              </p>
+            )}
             <Button size="sm" variant="outline" onClick={() => setRenewing(false)}>
               Cancel
             </Button>
