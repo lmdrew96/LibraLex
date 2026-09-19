@@ -4,7 +4,8 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 // Pill buttons, ADHDesigns house style. Generous heights for comfortable touch
-// targets (≥44px on md).
+// targets: md is 44px everywhere; sm/icon grow to 44px on touch screens
+// (pointer-coarse) and stay compact under a mouse.
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 rounded-full font-medium transition-opacity disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
   {
@@ -18,9 +19,9 @@ const buttonVariants = cva(
         danger: "bg-[var(--color-overdue)] text-surface hover:opacity-90",
       },
       size: {
-        sm: "h-9 px-4 text-sm",
+        sm: "h-9 px-4 text-sm pointer-coarse:h-11",
         md: "h-11 px-6 text-base",
-        icon: "h-10 w-10",
+        icon: "h-10 w-10 pointer-coarse:h-11 pointer-coarse:w-11",
       },
     },
     defaultVariants: { variant: "primary", size: "md" },

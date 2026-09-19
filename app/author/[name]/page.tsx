@@ -52,7 +52,7 @@ export default function AuthorPage({ params }: { params: Promise<{ name: string 
     <AppShell>
       <button
         onClick={() => router.back()}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-teal hover:underline"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-teal hover:underline pointer-coarse:min-h-11"
       >
         <ArrowLeft className="h-4 w-4" />
         Back

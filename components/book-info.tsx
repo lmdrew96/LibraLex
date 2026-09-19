@@ -79,7 +79,7 @@ function Expandable({ text, clamp }: { text: string; clamp: string }) {
       {long && (
         <button
           onClick={() => setOpen((o) => !o)}
-          className="mt-1 text-xs font-medium text-teal underline-offset-2 hover:underline"
+          className="mt-1 text-xs font-medium text-teal underline-offset-2 hover:underline pointer-coarse:py-3"
         >
           {open ? "Show less" : "Read more"}
         </button>

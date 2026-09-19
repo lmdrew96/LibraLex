@@ -96,7 +96,7 @@ export default function FriendShelfPage({
                 aria-pressed={tab === key}
                 onClick={() => setTab(key)}
                 className={cn(
-                  "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                  "rounded-full px-4 py-1.5 text-sm pointer-coarse:py-3 font-medium transition-colors",
                   tab === key
                     ? "bg-ink text-surface"
                     : "bg-lavender/50 text-ink hover:bg-lavender",

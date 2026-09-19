@@ -184,7 +184,7 @@ export default function RecsPage() {
               <button
                 onClick={() => remove(rec._id, rec.title)}
                 aria-label={`Dismiss recommendation of ${rec.title}`}
-                className="absolute right-3 top-3 rounded-full p-1.5 text-teal/60 transition-colors hover:bg-lavender hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+                className="absolute right-3 top-3 rounded-full p-1.5 pointer-coarse:p-3.5 text-teal/90 transition-colors hover:bg-lavender hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
               >
                 <X className="h-4 w-4" />
               </button>

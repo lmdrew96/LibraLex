@@ -236,7 +236,7 @@ export default function SettingsPage() {
                   onClick={() => toggleGenre(g.id)}
                   aria-pressed={on}
                   className={cn(
-                    "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal",
+                    "rounded-full border px-3.5 py-1.5 text-sm pointer-coarse:py-3 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal",
                     on
                       ? "border-teal bg-teal text-surface"
                       : "border-lavender bg-card text-ink/80 hover:bg-lavender/50",
@@ -277,7 +277,7 @@ export default function SettingsPage() {
                   onClick={() => toggleShelf(key)}
                   aria-pressed={visible}
                   className={cn(
-                    "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal",
+                    "rounded-full border px-3.5 py-1.5 text-sm pointer-coarse:py-3 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal",
                     visible
                       ? "border-teal bg-teal text-surface"
                       : "border-lavender bg-card text-ink/80 hover:bg-lavender/50",

@@ -69,7 +69,7 @@ export default function ShelfPage() {
                   onClick={() => setFilter(key)}
                   aria-pressed={filter === key}
                   className={cn(
-                    "rounded-full px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal",
+                    "rounded-full px-4 py-1.5 text-sm pointer-coarse:py-3 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal",
                     filter === key
                       ? "bg-ink text-surface"
                       : "bg-lavender/50 text-ink hover:bg-lavender",

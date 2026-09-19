@@ -210,7 +210,7 @@ export default function FriendsPage() {
                 <button
                   onClick={() => decline(req.friendshipId, req.displayName)}
                   aria-label={`Decline ${req.displayName}`}
-                  className="rounded-full p-2 text-teal transition-colors hover:bg-lavender focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+                  className="rounded-full p-2 pointer-coarse:p-3.5 text-teal transition-colors hover:bg-lavender focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -291,7 +291,7 @@ export default function FriendsPage() {
                 <button
                   onClick={() => unfriend(friend.friendshipId, friend.displayName)}
                   aria-label={`Remove ${friend.displayName}`}
-                  className="rounded-full p-2 text-teal/90 transition-colors hover:bg-lavender hover:text-[var(--color-overdue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+                  className="rounded-full p-2 pointer-coarse:p-3.5 text-teal/90 transition-colors hover:bg-lavender hover:text-[var(--color-overdue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
                 >
                   <X className="h-4 w-4" />
                 </button>

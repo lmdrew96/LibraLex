@@ -72,7 +72,7 @@ export default function HistoryPage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+              "rounded-full px-4 py-1.5 text-sm pointer-coarse:py-3 font-medium transition-colors",
               tab === t.key ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/50",
             )}
           >

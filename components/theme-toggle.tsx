@@ -26,7 +26,7 @@ export function ThemeToggle() {
           aria-checked={theme === value}
           onClick={() => setTheme(value)}
           className={cn(
-            "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+            "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm pointer-coarse:py-3 font-medium transition-colors",
             theme === value ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/50",
           )}
         >

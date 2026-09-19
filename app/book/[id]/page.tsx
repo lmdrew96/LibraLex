@@ -219,7 +219,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     <AppShell>
       <button
         onClick={() => router.back()}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-teal hover:underline"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-teal hover:underline pointer-coarse:min-h-11"
       >
         <ArrowLeft className="h-4 w-4" />
         Back
@@ -331,7 +331,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
                 {book.finishedAt !== undefined ? (
                   <button
                     onClick={() => setFinishedAt(null)}
-                    className="text-xs text-teal hover:underline"
+                    className="text-xs text-teal hover:underline pointer-coarse:py-3"
                   >
                     Don&apos;t remember
                   </button>
@@ -531,7 +531,7 @@ function CoverControls({ book }: { book: BookWithCover }) {
         {busy ? "Uploading…" : hasCustom ? "Replace cover" : "Upload cover"}
       </Button>
       {hasCustom && !busy && (
-        <button onClick={onRemove} className="text-xs text-teal hover:underline">
+        <button onClick={onRemove} className="text-xs text-teal hover:underline pointer-coarse:py-3">
           Remove custom cover
         </button>
       )}
@@ -558,7 +558,7 @@ function Segmented({
           aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
           className={cn(
-            "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+            "rounded-full px-4 py-1.5 text-sm pointer-coarse:py-3 font-medium transition-colors",
             value === opt.value ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/50",
           )}
         >
