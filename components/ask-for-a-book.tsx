@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, type FormEvent } from "react"
+import Link from "next/link"
 import { useAction, useQuery } from "convex/react"
 import { Search, Sparkles } from "lucide-react"
 import { api } from "@/convex/_generated/api"
@@ -50,6 +51,13 @@ export function AskForABook({ library }: { library: BookWithCover[] }) {
         <Sparkles className="h-4 w-4" />
         Ask for a book
       </h2>
+      <p className="-mt-1 mb-3 text-sm text-teal">
+        Describe a mood, theme, or vibe, not a title. Looking for a specific book?{" "}
+        <Link href="/search" className="font-medium text-ink underline underline-offset-4 hover:text-teal">
+          Use Search
+        </Link>
+        .
+      </p>
 
       <form onSubmit={submit} className="relative mb-4">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-teal" />

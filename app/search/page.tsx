@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { Search } from "lucide-react"
 import { useBookSearch } from "@/lib/use-book-search"
 import { AppShell } from "@/components/app-shell"
@@ -19,7 +20,12 @@ export default function SearchPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-semibold">Search</h1>
         <p className="mt-1 text-teal">
-          Look up any book to read its summary, subjects, and author bios — or browse popular books by genre below.
+          Look up a specific book by title or author to read its summary — or browse popular books by genre
+          below. Want ideas instead?{" "}
+          <Link href="/recs" className="font-medium text-ink underline underline-offset-4 hover:text-teal">
+            Ask for a book
+          </Link>{" "}
+          by describing a mood.
         </p>
       </div>
 

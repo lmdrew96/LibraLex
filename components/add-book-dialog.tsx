@@ -202,7 +202,7 @@ export function AddBookDialog({
                 ? "For the indie and obscure ones search can't find."
                 : step === "scan"
                   ? "Point your camera at the barcode on the back cover."
-                  : "Search by title or author — covers and details fill in automatically."}
+                  : "Find the book by title or author to put it on a shelf — covers and details fill in automatically."}
           </DialogDescription>
         </div>
 
