@@ -59,15 +59,22 @@ const getOwnedBook = async (
 // without an uploaded cover return coverUrl: undefined and fall back to the
 // auto-fetched coverId/coverUrlFallback in <BookCover>. The getUrl lookup only
 // runs for books that actually have an upload, so listing a full shelf is cheap.
+//
+// The embedding is stripped here: it's ~1536 floats (~12KB) per book, only ever
+// used server-side (vector search, taste vector), and these queries are live
+// subscriptions — shipping it would re-send every vector on every shelf change.
 const withCoverUrl = async (
   ctx: QueryCtx,
   book: Doc<"books">,
-): Promise<Doc<"books"> & { coverUrl?: string }> => ({
-  ...book,
-  coverUrl: book.coverStorageId
-    ? ((await ctx.storage.getUrl(book.coverStorageId)) ?? undefined)
-    : undefined,
-})
+): Promise<Omit<Doc<"books">, "embedding"> & { coverUrl?: string }> => {
+  const { embedding: _embedding, ...rest } = book
+  return {
+    ...rest,
+    coverUrl: book.coverStorageId
+      ? ((await ctx.storage.getUrl(book.coverStorageId)) ?? undefined)
+      : undefined,
+  }
+}
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
