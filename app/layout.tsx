@@ -75,6 +75,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       signInFallbackRedirectUrl="/"
       signUpFallbackRedirectUrl="/"
       afterSignOutUrl="/login"
+      // Theme Clerk (SignIn/SignUp + header UserButton) from our live CSS tokens so
+      // it follows light/dark with the rest of the app. Hardcoded hex values here
+      // left a light card whose text inherited the dark theme's cream foreground.
+      appearance={{
+        variables: {
+          colorPrimary: "var(--color-ink)",
+          colorPrimaryForeground: "var(--color-surface)",
+          colorBackground: "var(--color-card)",
+          colorForeground: "var(--color-ink)",
+          colorMutedForeground: "var(--color-teal)",
+          colorNeutral: "var(--color-ink)",
+          colorBorder: "var(--color-lavender)",
+          colorInput: "var(--color-surface)",
+          colorInputForeground: "var(--color-ink)",
+          colorDanger: "var(--color-overdue)",
+          borderRadius: "16px",
+          fontFamily: "var(--font-libre-franklin), system-ui, sans-serif",
+        },
+      }}
     >
       <html
         lang="en"

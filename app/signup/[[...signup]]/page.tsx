@@ -7,16 +7,7 @@ export default function SignupPage() {
         <h1 className="text-4xl font-semibold">LibraLex</h1>
         <p className="mt-2 text-teal">Your shelf, digitized.</p>
       </div>
-      <SignUp
-        appearance={{
-          variables: {
-            colorPrimary: "#41386b",
-            colorBackground: "#f7f8ee",
-            borderRadius: "16px",
-            fontFamily: "var(--font-libre-franklin), system-ui, sans-serif",
-          },
-        }}
-      />
+      <SignUp />
     </main>
   )
 }
