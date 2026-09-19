@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { pickTitleMatch } from "@/convex/googleBooks"
+import { isSameBook, pickTitleMatch } from "@/convex/googleBooks"
 
 const vol = (title: string, thumbnail?: string) => ({ title, thumbnail })
 
@@ -15,12 +15,12 @@ describe("pickTitleMatch", () => {
 
   it("prefers a matching volume that has a cover when asked", () => {
     const v = [vol("Nimona"), vol("Unrelated", "nope"), vol("Nimona", "cover")]
-    expect(pickTitleMatch(v, "Nimona", { preferThumbnail: true })?.thumbnail).toBe("cover")
+    expect(pickTitleMatch(v, "Nimona", { prefer: (v) => Boolean(v.thumbnail) })?.thumbnail).toBe("cover")
   })
 
   it("still returns a cover-less match when none has a cover", () => {
     const v = [vol("Monstress. Volume 1")]
-    expect(pickTitleMatch(v, "Monstress, Vol. 1", { preferThumbnail: true })?.title).toBe("Monstress. Volume 1")
+    expect(pickTitleMatch(v, "Monstress, Vol. 1", { prefer: (v) => Boolean(v.thumbnail) })?.title).toBe("Monstress. Volume 1")
   })
 })
 
@@ -40,5 +40,28 @@ describe("sharperGoogleCover", () => {
   it("leaves non-Google covers alone", () => {
     expect(sharperGoogleCover("https://is1-ssl.mzstatic.com/image/cover.jpg", 400)).toBeNull()
     expect(sharperGoogleCover("not a url", 400)).toBeNull()
+  })
+})
+
+describe("isSameBook", () => {
+  it("matches the same title + author regardless of punctuation/case", () => {
+    expect(
+      isSameBook(
+        { title: "Harry Potter and the Philosopher's Stone", authors: ["J. K. Rowling"] },
+        { title: "Harry Potter and the Philosophers Stone", authors: ["J.K. Rowling"] },
+      ),
+    ).toBe(true)
+  })
+
+  it("rejects a different book with an overlapping title", () => {
+    expect(
+      isSameBook({ title: "Dune", authors: ["Frank Herbert"] }, { title: "Dune Messiah", authors: ["Frank Herbert"] }),
+    ).toBe(false)
+  })
+
+  it("rejects the same title by a different author", () => {
+    expect(
+      isSameBook({ title: "Speak", authors: ["Laurie Halse Anderson"] }, { title: "Speak", authors: ["Louisa Hall"] }),
+    ).toBe(false)
   })
 })

@@ -1,5 +1,10 @@
 import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
-import { fetchCoverByTitle, fetchVolumeByIsbn, fetchVolumeByTitleAuthor } from "./googleBooks"
+import {
+  fetchCoverByTitle,
+  fetchTitleMatchWith,
+  fetchVolumeByIsbn,
+  fetchVolumeByTitleAuthor,
+} from "./googleBooks"
 
 /** A fully enriched, cacheable book record — search-result fields plus the merged
  *  enrichment (description/categories/subjects) written to Convex so the detail
@@ -69,6 +74,15 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
     firstOf(candidate.coverUrlFallback, gb?.thumbnail) ??
     (await fetchCoverByTitle(candidate.title, candidate.authors[0]))
 
+  // Same for the description: a foreign edition's description is blanked by
+  // mapVolume (English-only), which would leave the book with none at all — so
+  // borrow the English title match's description (and categories, if the
+  // matched edition had none).
+  const descVolume = gb?.description
+    ? null
+    : await fetchTitleMatchWith(candidate.title, candidate.authors[0], (v) => Boolean(v.description))
+  const categories = gb?.categories?.length ? gb.categories : descVolume?.categories
+
   return {
     title: candidate.title,
     authors,
@@ -77,9 +91,9 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
     workKey: firstOf(candidate.workKey, gb?.id),
     firstPublishYear: sanitizeYear(firstOf(gb?.year, candidate.firstPublishYear)),
     pageCount: firstOf(gb?.pageCount, candidate.pageCount),
-    description: gb?.description,
-    categories: gb?.categories && gb.categories.length > 0 ? gb.categories : undefined,
-    subjects: gb?.categories?.length ? normalizeSubjects(gb.categories) : undefined,
+    description: gb?.description ?? descVolume?.description,
+    categories: categories?.length ? categories : undefined,
+    subjects: categories?.length ? normalizeSubjects(categories) : undefined,
     averageRating: gb?.averageRating,
     ratingsCount: gb?.ratingsCount,
   }

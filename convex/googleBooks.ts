@@ -257,13 +257,13 @@ export const fetchVolumeByTitleAuthor = async (
 }
 
 /** The first volume whose title plausibly matches `title` (loose overlap guard),
- *  or null. With `preferThumbnail`, a matching volume that has a cover wins over
- *  an earlier match without one — search results often lead with a cover-less
- *  edition of the same book. Pure, so it's unit-tested. */
-export const pickTitleMatch = <V extends { title: string; thumbnail?: string }>(
+ *  or null. With `prefer`, a matching volume that satisfies it (e.g. has a cover)
+ *  wins over an earlier match that doesn't — search results often lead with a
+ *  bare edition of the same book. Pure, so it's unit-tested. */
+export const pickTitleMatch = <V extends { title: string }>(
   volumes: V[],
   title: string,
-  { preferThumbnail = false }: { preferThumbnail?: boolean } = {},
+  { prefer }: { prefer?: (v: V) => boolean } = {},
 ): V | null => {
   const want = normalizeTitle(title)
   const key = want.slice(0, 12)
@@ -271,29 +271,49 @@ export const pickTitleMatch = <V extends { title: string; thumbnail?: string }>(
     const got = normalizeTitle(v.title)
     return Boolean(got) && (got.includes(key) || want.includes(got.slice(0, 12)))
   })
-  if (preferThumbnail) return matches.find((v) => v.thumbnail) ?? matches[0] ?? null
+  if (prefer) return matches.find(prefer) ?? matches[0] ?? null
   return matches[0] ?? null
 }
 
-/** Last-resort cover search for a book whose best-matching volume has no image
- *  (an ISBN pointing at a foreign or niche edition Google has without a cover).
- *  Tries English title + author, then English title alone (catches renamed
- *  authors), preferring any matching volume that actually has a cover. Returns
- *  the https thumbnail URL or undefined — never throws. */
-export const fetchCoverByTitle = async (
+/** English title search for a volume that has what we need (`need`: a cover, a
+ *  description), for when the best-matching edition lacks it — typically an ISBN
+ *  for a foreign/niche edition (its non-English description is blanked by
+ *  mapVolume, and it may have no image). Tries title + author, then title alone
+ *  (catches renamed authors). Null if no matching volume has it — never throws. */
+export const fetchTitleMatchWith = async (
   title: string,
   author: string | undefined,
-): Promise<string | undefined> => {
+  need: (v: GoogleVolume) => boolean,
+): Promise<GoogleVolume | null> => {
   const attempts = author ? [author, undefined] : [undefined]
   for (const a of attempts) {
     try {
       const q = [`intitle:${title}`, a ? `inauthor:${a}` : ""].filter(Boolean).join("+")
       const volumes = await fetchVolumesByQuery(q, { maxResults: 10, langRestrict: "en" })
-      const match = pickTitleMatch(volumes, title, { preferThumbnail: true })
-      if (match?.thumbnail) return match.thumbnail
+      const match = pickTitleMatch(volumes, title, { prefer: need })
+      if (match && need(match)) return match
     } catch {
       // try the next, broader query
     }
   }
-  return undefined
+  return null
+}
+
+/** Last-resort cover search — see fetchTitleMatchWith. */
+export const fetchCoverByTitle = async (
+  title: string,
+  author: string | undefined,
+): Promise<string | undefined> =>
+  (await fetchTitleMatchWith(title, author, (v) => Boolean(v.thumbnail)))?.thumbnail
+
+/** Strict "same book" check for rewriting identity (not just borrowing a cover):
+ *  normalized titles equal, and first authors equal when both are known. */
+export const isSameBook = (
+  a: { title: string; authors: string[] },
+  b: { title: string; authors: string[] },
+): boolean => {
+  if (normalizeTitle(a.title) !== normalizeTitle(b.title)) return false
+  const aa = a.authors[0] ? normalizeTitle(a.authors[0]) : ""
+  const ba = b.authors[0] ? normalizeTitle(b.authors[0]) : ""
+  return !aa || !ba || aa === ba
 }

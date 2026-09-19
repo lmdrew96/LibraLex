@@ -3,9 +3,16 @@ import { internal } from "./_generated/api"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { enrichBook } from "./enrich"
-import { fetchCoverByTitle, fetchVolumeByIsbn } from "./googleBooks"
+import {
+  fetchCoverByTitle,
+  fetchTitleMatchWith,
+  fetchVolumeByIsbn,
+  isSameBook,
+  type GoogleVolume,
+} from "./googleBooks"
 import { embedBookWithRetry } from "./embed"
 import { rollTasteVector } from "./tasteVector"
+import { identityKey } from "./discover"
 
 // One-off (re-runnable) enrich + normalize backfill for the existing shelf.
 // INTERNAL — not client-exposed; run from the CLI against whichever deployment
@@ -247,5 +254,125 @@ export const backfillMissingCovers = internalAction({
       }
     }
     return { dryRun, missing: missing.length, found, stillMissing }
+  },
+})
+
+// ── Legacy-row repair: Open Library workKeys + missing descriptions ─────────
+// Two gaps left by the Open Library → Google Books migration:
+//  • workKey still "/works/OL…W" on most older rows, so those books never share an
+//    identity (dedupe, community ratings) with the same book added from Google.
+//    Swapped for the Google volume id ONLY on a confident match — the row's own
+//    ISBN edition, else an English title search whose title AND first author match
+//    exactly (isSameBook) — and never onto an id another of the user's rows has.
+//  • empty or stub (<15 words) descriptions, filled from the ISBN edition or the
+//    English title match. Nothing else on the row is touched.
+//   npx convex run --prod backfill:repairLegacyRows '{"dryRun": true}'
+
+const isLegacyWorkKey = (k: string | undefined): boolean => Boolean(k?.startsWith("/works/"))
+const isStubDescription = (d: string | undefined): boolean =>
+  !d || d.trim().split(/\s+/).length < 15
+
+export const _applyRepair = internalMutation({
+  args: {
+    id: v.id("books"),
+    workKey: v.optional(v.string()),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, { id, workKey, description }) => {
+    const book = await ctx.db.get(id)
+    if (!book) return
+    const patch: Partial<Doc<"books">> = {}
+    if (workKey && isLegacyWorkKey(book.workKey)) patch.workKey = workKey
+    if (description && isStubDescription(book.description)) patch.description = description
+    if (Object.keys(patch).length) await ctx.db.patch(id, patch)
+  },
+})
+
+type Repair = { title: string; workKey?: { from: string; to: string; via: "isbn" | "title" }; description?: boolean }
+
+export const repairLegacyRows = internalAction({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (
+    ctx,
+    { dryRun = true },
+  ): Promise<{
+    dryRun: boolean
+    scanned: number
+    repairs: Repair[]
+    keyCollisions: string[]
+    unmatchedKeys: string[]
+  }> => {
+    const rows: Doc<"books">[] = []
+    let cursor: string | null = null
+    for (;;) {
+      const res: { page: Doc<"books">[]; cursor: string; isDone: boolean } = await ctx.runQuery(
+        internal.backfill._booksPage,
+        { cursor },
+      )
+      rows.push(...res.page)
+      if (res.isDone) break
+      cursor = res.cursor
+    }
+
+    // Identity keys each user already holds — a swap must not collide with one.
+    const keysByUser = new Map<string, Set<string>>()
+    for (const b of rows) {
+      const set = keysByUser.get(b.userId) ?? new Set<string>()
+      set.add(identityKey(b))
+      keysByUser.set(b.userId, set)
+    }
+
+    const repairs: Repair[] = []
+    const keyCollisions: string[] = []
+    const unmatchedKeys: string[] = []
+
+    for (const b of rows) {
+      const needsKey = isLegacyWorkKey(b.workKey)
+      const needsDesc = isStubDescription(b.description)
+      if (!needsKey && !needsDesc) continue
+
+      const byIsbn: GoogleVolume | null = b.isbn ? await fetchVolumeByIsbn(b.isbn) : null
+      const repair: Repair = { title: b.title }
+      let newKey: string | undefined
+      let newDesc: string | undefined
+
+      if (needsKey) {
+        let match: { id: string; via: "isbn" | "title" } | null =
+          byIsbn && isSameBook(b, byIsbn) ? { id: byIsbn.id, via: "isbn" } : null
+        if (!match) {
+          const t = await fetchTitleMatchWith(b.title, b.authors[0], (v) => isSameBook(b, v))
+          if (t) match = { id: t.id, via: "title" }
+        }
+        if (!match) {
+          unmatchedKeys.push(b.title)
+        } else if (keysByUser.get(b.userId)?.has(`w:${match.id}`)) {
+          keyCollisions.push(b.title) // the user already has this exact volume on another row
+        } else {
+          newKey = match.id
+          keysByUser.get(b.userId)?.add(`w:${match.id}`)
+          repair.workKey = { from: b.workKey!, to: match.id, via: match.via }
+        }
+      }
+
+      if (needsDesc) {
+        newDesc =
+          byIsbn?.description ??
+          (await fetchTitleMatchWith(b.title, b.authors[0], (v) => Boolean(v.description)))?.description
+        if (newDesc && !isStubDescription(newDesc)) repair.description = true
+        else newDesc = undefined
+      }
+
+      if (!repair.workKey && !repair.description) continue
+      repairs.push(repair)
+      if (!dryRun) {
+        await ctx.runMutation(internal.backfill._applyRepair, {
+          id: b._id,
+          workKey: newKey,
+          description: newDesc,
+        })
+      }
+    }
+
+    return { dryRun, scanned: rows.length, repairs, keyCollisions, unmatchedKeys }
   },
 })
