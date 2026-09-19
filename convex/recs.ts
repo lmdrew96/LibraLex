@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server"
 import { ConvexError, v } from "convex/values"
 import { addOrMoveBook, type AddResult } from "./shelfAdd"
-import { getUserId, requireUserId } from "./util"
+import { assertMaxLength, getUserId, requireUserId, TEXT_LIMITS } from "./util"
 import { areFriends } from "./friends"
 import { profileFor, toPublicProfile } from "./users"
 
@@ -85,6 +85,19 @@ export const sendRec = mutation({
     }
 
     const message = args.message?.trim()
+    assertMaxLength(args.title, TEXT_LIMITS.title, "Title")
+    assertMaxLength(message, TEXT_LIMITS.message, "Note")
+    // The cover rides along by storage id — only accept one that's actually on one
+    // of the sender's own books, so a caller can't point a rec at arbitrary files.
+    if (args.coverStorageId) {
+      const mine = await ctx.db
+        .query("books")
+        .withIndex("by_user", (q) => q.eq("userId", me))
+        .collect()
+      if (!mine.some((b) => b.coverStorageId === args.coverStorageId)) {
+        throw new ConvexError("That cover isn't on one of your books.")
+      }
+    }
     await ctx.db.insert("recommendations", {
       fromUserId: me,
       toUserId: args.toUserId,

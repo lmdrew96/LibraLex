@@ -8,7 +8,7 @@ import { enrichBook } from "./enrich"
 import { embedBookWithRetry } from "./embed"
 import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
 import { rollTasteVector } from "./tasteVector"
-import { LOAN_PERIOD_MS } from "./util"
+import { assertMaxLength, LOAN_PERIOD_MS, TEXT_LIMITS } from "./util"
 
 // The ONE write path for putting a book on someone's shelf — used by the web
 // (books.addBook), accepting a rec (recs.addRecToShelf) and the MCP door
@@ -75,6 +75,7 @@ export const addOrMoveBook = async (
   userId: string,
   input: AddInput,
 ): Promise<AddResult> => {
+  assertMaxLength(input.title, TEXT_LIMITS.title, "Title")
   const now = Date.now()
   const rows = await ctx.db
     .query("books")

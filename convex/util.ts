@@ -1,4 +1,5 @@
 import type { MutationCtx, QueryCtx } from "./_generated/server"
+import { ConvexError } from "convex/values"
 
 // Shared auth helpers for the social modules. Mirrors the inline pattern in
 // books.ts: the userId is Clerk's stable tokenIdentifier. Queries stay quiet
@@ -26,3 +27,13 @@ export const requireUserId = async (
 // It's a default, not a law (renewLoan lets the user override).
 export const LOAN_PERIOD_DAYS = 21
 export const LOAN_PERIOD_MS = LOAN_PERIOD_DAYS * 24 * 60 * 60 * 1000
+
+// Server-side length caps for user-written text. The UI has its own limits, but a
+// public mutation can be called directly, so the server enforces them too.
+export const TEXT_LIMITS = { title: 500, review: 5000, message: 500 } as const
+
+export const assertMaxLength = (value: string | undefined, max: number, label: string): void => {
+  if (value !== undefined && value.length > max) {
+    throw new ConvexError(`${label} is too long (max ${max} characters).`)
+  }
+}

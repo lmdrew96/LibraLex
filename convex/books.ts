@@ -1,9 +1,9 @@
 import { action, mutation, query } from "./_generated/server"
-import { v } from "convex/values"
+import { ConvexError, v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { normalizeAuthors } from "./normalize"
-import { LOAN_PERIOD_MS } from "./util"
+import { assertMaxLength, LOAN_PERIOD_MS, TEXT_LIMITS } from "./util"
 import { addOrMoveBook, readStatusStamps, rollTasteOnStart, type AddResult } from "./shelfAdd"
 import { internal } from "./_generated/api"
 
@@ -208,7 +208,8 @@ export const updateBook = mutation({
     id: v.id("books"),
     patch: v.object({
       readStatus: v.optional(readStatusValidator),
-      rating: v.optional(v.number()),
+      // 1–5 sets a rating; null clears it.
+      rating: v.optional(v.union(v.number(), v.null())),
       review: v.optional(v.string()),
       ownership: v.optional(ownershipValidator),
       title: v.optional(v.string()),
@@ -225,8 +226,15 @@ export const updateBook = mutation({
     const book = await getOwnedBook(ctx, userId, args.id)
     const now = Date.now()
 
-    const { finishedAt: finishedAtInput, ...patch } = args.patch
+    const { finishedAt: finishedAtInput, rating, ...patch } = args.patch
+    assertMaxLength(patch.title, TEXT_LIMITS.title, "Title")
+    assertMaxLength(patch.review, TEXT_LIMITS.review, "Review")
+    if (rating !== undefined && rating !== null && !(Number.isInteger(rating) && rating >= 1 && rating <= 5)) {
+      throw new ConvexError("Rating must be a whole number from 1 to 5.")
+    }
     const updates: Partial<Doc<"books">> = { ...patch }
+    // null clears the rating (an undefined patch value removes the field in Convex).
+    if (rating !== undefined) updates.rating = rating ?? undefined
 
     // Normalize edited author lists the same way writes do.
     if (patch.authors !== undefined) {

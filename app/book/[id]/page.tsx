@@ -126,7 +126,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
-  const setRating = async (n: number) => {
+  const setRating = async (n: number | null) => {
     try {
       await updateBook({ id: book._id, patch: { rating: n } })
     } catch {
@@ -364,6 +364,14 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
                   />
                 </button>
               ))}
+              {book.rating !== undefined && (
+                <button
+                  onClick={() => setRating(null)}
+                  className="ml-2 px-2 py-3 text-sm text-teal hover:underline"
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </section>
 
