@@ -3,6 +3,7 @@ import { internal } from "./_generated/api"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { enrichBook } from "./enrich"
+import { fetchCoverByTitle, fetchVolumeByIsbn } from "./googleBooks"
 import { embedBookWithRetry } from "./embed"
 import { rollTasteVector } from "./tasteVector"
 
@@ -193,5 +194,58 @@ export const enrichAllBooks = internalAction({
     }
 
     return { dryRun, total: books.length, changed: changes.length, changes }
+  },
+})
+
+// ── Covers-only backfill ────────────────────────────────────────────────────
+// Finds books with no cover (no Google thumbnail, no upload) and looks one up —
+// the ISBN edition's cover, else the same title's cover (fetchCoverByTitle). It
+// writes ONLY coverUrlFallback, and only while it's still empty, so it can't
+// disturb authors/years the way a full enrichAllBooks pass would.
+//   npx convex run --prod backfill:backfillMissingCovers '{"dryRun": true}'
+
+export const _setCoverIfMissing = internalMutation({
+  args: { id: v.id("books"), coverUrlFallback: v.string() },
+  handler: async (ctx, { id, coverUrlFallback }): Promise<boolean> => {
+    const book = await ctx.db.get(id)
+    if (!book || book.coverUrlFallback || book.coverStorageId) return false
+    await ctx.db.patch(id, { coverUrlFallback })
+    return true
+  },
+})
+
+export const backfillMissingCovers = internalAction({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (
+    ctx,
+    { dryRun = true },
+  ): Promise<{ dryRun: boolean; missing: number; found: string[]; stillMissing: string[] }> => {
+    const missing: Doc<"books">[] = []
+    let cursor: string | null = null
+    for (;;) {
+      const res: { page: Doc<"books">[]; cursor: string; isDone: boolean } = await ctx.runQuery(
+        internal.backfill._booksPage,
+        { cursor },
+      )
+      missing.push(...res.page.filter((b) => !b.coverUrlFallback && !b.coverStorageId))
+      if (res.isDone) break
+      cursor = res.cursor
+    }
+
+    const found: string[] = []
+    const stillMissing: string[] = []
+    for (const b of missing) {
+      const byIsbn = b.isbn ? await fetchVolumeByIsbn(b.isbn) : null
+      const cover = byIsbn?.thumbnail ?? (await fetchCoverByTitle(b.title, b.authors[0]))
+      if (!cover) {
+        stillMissing.push(b.title)
+        continue
+      }
+      found.push(b.title)
+      if (!dryRun) {
+        await ctx.runMutation(internal.backfill._setCoverIfMissing, { id: b._id, coverUrlFallback: cover })
+      }
+    }
+    return { dryRun, missing: missing.length, found, stillMissing }
   },
 })

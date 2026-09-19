@@ -174,6 +174,9 @@ export const _getBook = internalQuery({
 
 // Patch enrichment in, never blanking a populated field (flaky fetches return
 // empty), and roll the taste vector if this is a read/reading book's first vector.
+// Authors and year only FILL GAPS: Google returns edition data (Wuthering Heights
+// "2003", illustrators added as co-authors), so a saved value always wins.
+// Descriptions, subjects, cover and ratings still refresh.
 export const _applyServerEnrichment = internalMutation({
   args: {
     id: v.id("books"),
@@ -193,10 +196,10 @@ export const _applyServerEnrichment = internalMutation({
     const book = await ctx.db.get(args.id)
     if (!book) return // deleted while enrichment was in flight
     await ctx.db.patch(args.id, {
-      authors: args.authors.length ? normalizeAuthors(args.authors) : book.authors,
+      authors: book.authors.length ? book.authors : normalizeAuthors(args.authors),
       coverUrlFallback: args.coverUrlFallback ?? book.coverUrlFallback,
       workKey: book.workKey ?? args.workKey,
-      firstPublishYear: sanitizeYear(args.firstPublishYear) ?? book.firstPublishYear,
+      firstPublishYear: book.firstPublishYear ?? sanitizeYear(args.firstPublishYear),
       pageCount: args.pageCount ?? book.pageCount,
       description: args.description ?? book.description,
       categories: args.categories ?? book.categories,
@@ -218,9 +221,9 @@ export const _applyServerEnrichment = internalMutation({
 // embed-backfill cron. Best-effort: a failed lookup leaves the row as it was.
 export const enrichBookById = internalAction({
   args: { id: v.id("books") },
-  handler: async (ctx, { id }): Promise<void> => {
+  handler: async (ctx, { id }): Promise<{ embedFailed: boolean }> => {
     const book = await ctx.runQuery(internal.shelfAdd._getBook, { id })
-    if (!book) return
+    if (!book) return { embedFailed: false }
     const enriched = await enrichBook({
       title: book.title,
       authors: book.authors,
@@ -240,7 +243,8 @@ export const enrichBookById = internalAction({
           description,
           subjects,
         })) ?? undefined)
-    if (!enriched && !embedding) return
+    const embedFailed = !book.embedding?.length && !embedding
+    if (!enriched && !embedding) return { embedFailed }
     await ctx.runMutation(internal.shelfAdd._applyServerEnrichment, {
       id,
       authors: enriched?.authors ?? book.authors,
@@ -255,6 +259,7 @@ export const enrichBookById = internalAction({
       ratingsCount: enriched?.ratingsCount,
       embedding,
     })
+    return { embedFailed }
   },
 })
 
@@ -293,10 +298,18 @@ export const embedMissing = internalAction({
       cursor = page.cursor
     }
     const batch = ids.slice(0, limit)
+    let processed = 0
     for (const id of batch) {
-      await ctx.runAction(internal.shelfAdd.enrichBookById, { id })
+      const { embedFailed } = await ctx.runAction(internal.shelfAdd.enrichBookById, { id })
+      processed++
+      // One failed embed usually means Gemini itself is down (bad key, outage) —
+      // stop instead of re-enriching the rest of the batch for nothing.
+      if (embedFailed) {
+        console.warn("embedMissing: embedding failed — stopping this run early")
+        break
+      }
     }
-    return { processed: batch.length }
+    return { processed }
   },
 })
 
