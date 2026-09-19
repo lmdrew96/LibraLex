@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useMutation } from "convex/react"
 import { toast } from "sonner"
 import { api } from "@/convex/_generated/api"
+import { addResultMessage } from "@/lib/add-result"
 import type { BookSearchResult } from "@/lib/types"
 import { collapseEditions } from "@/lib/collapse-editions"
 import { BookCover } from "@/components/book-cover"
@@ -78,16 +79,19 @@ function AddActions({ book }: { book: BookSearchResult }) {
     if (busy || added) return
     setBusy(ownership)
     try {
-      await addBook({
+      const result = await addBook({
         ...bookArgs(book),
         ownership,
         readStatus: ownership === "none" ? "read" : undefined,
       })
       setAdded(ownership)
       toast.success(
-        ownership === "none"
-          ? `Logged “${book.title}” as read.`
-          : `Added “${book.title}” to your ${ownership === "owned" ? "shelf" : "wishlist"}.`,
+        addResultMessage(
+          result,
+          ownership === "none"
+            ? `Logged “${book.title}” as read.`
+            : `Added “${book.title}” to your ${ownership === "owned" ? "shelf" : "wishlist"}.`,
+        ),
       )
     } catch {
       toast.error(`Couldn't add “${book.title}”. Try again.`)

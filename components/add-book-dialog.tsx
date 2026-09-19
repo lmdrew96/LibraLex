@@ -6,7 +6,8 @@ import { toast } from "sonner"
 import { ArrowLeft, BookPlus, Loader2, ScanBarcode, Search } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { BookSearchResult, Ownership } from "@/lib/types"
-import { bookArgs, enrichInBackground } from "@/lib/enrich-on-add"
+import { bookArgs } from "@/lib/enrich-on-add"
+import { addResultMessage } from "@/lib/add-result"
 import { defaultDueDate, dueLabel, fromDateInput, toDateInput } from "@/lib/loans"
 import { useBookSearch } from "@/lib/use-book-search"
 import { BarcodeScanner } from "@/components/barcode-scanner"
@@ -33,7 +34,6 @@ export function AddBookDialog({
   compact?: boolean
 }) {
   const addBook = useMutation(api.books.addBook)
-  const applyEnrichment = useMutation(api.books.applyEnrichment)
 
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>("search")
@@ -141,7 +141,7 @@ export function AddBookDialog({
     // Close optimistically — Convex's live query lands the book on the shelf.
     handleOpenChange(false)
     try {
-      const id = await addBook({ ...bookArgs(selected), ownership, ...extra })
+      const result = await addBook({ ...bookArgs(selected), ownership, ...extra })
       const where =
         ownership === "owned"
           ? "your shelf"
@@ -150,9 +150,7 @@ export function AddBookDialog({
             : ownership === "none"
               ? "your history"
               : "your loans"
-      toast.success(`Added “${title}” to ${where}.`)
-      // Enrich once in the background — the book is already on the shelf.
-      void enrichInBackground(id, selected, applyEnrichment)
+      toast.success(addResultMessage(result, `Added “${title}” to ${where}.`))
     } catch {
       toast.error(`Couldn't add “${title}”. Try again.`)
     } finally {

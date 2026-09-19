@@ -1,9 +1,9 @@
 import { mutation, query } from "./_generated/server"
 import { ConvexError, v } from "convex/values"
+import { addOrMoveBook, type AddResult } from "./shelfAdd"
 import { getUserId, requireUserId } from "./util"
 import { areFriends } from "./friends"
 import { profileFor, toPublicProfile } from "./users"
-import { normalizeAuthors, sanitizeYear } from "./normalize"
 
 // Recommendations can only be added to your own shelf as owned or wishlist —
 // the library-loan path is checkout-specific and not meaningful for a rec.
@@ -119,11 +119,12 @@ export const markAllRead = mutation({
   },
 })
 
-// Accept a rec onto my shelf: insert the snapshot as a book, then consume the
-// rec (acting on an inbox item removes it).
+// Accept a rec onto my shelf via the shared add path (dedupes against every
+// shelf + schedules enrichment), then consume the rec (acting on an inbox item
+// removes it).
 export const addRecToShelf = mutation({
   args: { recId: v.id("recommendations"), ownership: recOwnershipValidator },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<AddResult> => {
     const me = await requireUserId(ctx)
     const rec = await ctx.db.get(args.recId)
     if (!rec || rec.toUserId !== me) throw new ConvexError("Recommendation not found.")
@@ -131,22 +132,19 @@ export const addRecToShelf = mutation({
     // Deliberately NOT carrying coverStorageId: it points at the sender's file,
     // and deleting either book deletes that file. The accepted book keeps the
     // auto cover; the recipient can upload their own from its detail page.
-    await ctx.db.insert("books", {
-      userId: me,
+    const result = await addOrMoveBook(ctx, me, {
       title: rec.title,
-      // Normalize on write — the snapshot may predate the sender's cleanup.
-      authors: normalizeAuthors(rec.authors),
+      authors: rec.authors,
       isbn: rec.isbn,
       coverId: rec.coverId,
       coverUrlFallback: rec.coverUrlFallback,
       workKey: rec.workKey,
-      firstPublishYear: sanitizeYear(rec.firstPublishYear),
+      firstPublishYear: rec.firstPublishYear,
       pageCount: rec.pageCount,
       ownership: args.ownership,
-      readStatus: "unread",
-      addedAt: Date.now(),
     })
     await ctx.db.delete(rec._id)
+    return result
   },
 })
 

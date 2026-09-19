@@ -1,10 +1,12 @@
-import { mutation, query } from "./_generated/server"
+import { action, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
-import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
+import { normalizeAuthors } from "./normalize"
 import { LOAN_PERIOD_MS } from "./util"
 import { rollTasteVector } from "./tasteVector"
+import { addOrMoveBook, type AddResult } from "./shelfAdd"
+import { internal } from "./_generated/api"
 
 // Cached enrichment fields shared by addBook + the re-fetch action. Optional —
 // produced by the enrich-once pipeline (lib/enrich.ts), stored so reads need no
@@ -154,7 +156,9 @@ export const listLoans = query({
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
-// Insert a book onto a shelf. Library adds capture checkout + computed due date.
+// Put a book on a shelf. Dedupes across all shelves (an existing copy is left
+// alone or moved, never duplicated) and schedules server-side enrich + embed —
+// see convex/shelfAdd.ts. Returns what happened so the UI can say so.
 export const addBook = mutation({
   args: {
     title: v.string(),
@@ -172,45 +176,10 @@ export const addBook = mutation({
     dueDate: v.optional(v.number()), // editable at add-time; defaults to checkout + 21d
     libraryName: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<AddResult> => {
     const userId = await requireUserId(ctx)
-    const now = Date.now()
-
-    const base = {
-      userId,
-      title: args.title,
-      // Normalize on write — source-agnostic cleanup (see convex/normalize.ts).
-      authors: normalizeAuthors(args.authors),
-      isbn: args.isbn,
-      coverId: args.coverId,
-      coverUrlFallback: args.coverUrlFallback,
-      workKey: args.workKey,
-      firstPublishYear: sanitizeYear(args.firstPublishYear),
-      pageCount: args.pageCount,
-      // Cached enrichment (already merged/normalized by the pipeline).
-      description: args.description,
-      categories: args.categories,
-      subjects: args.subjects ? normalizeSubjects(args.subjects) : undefined,
-      authorBios: args.authorBios,
-      averageRating: args.averageRating,
-      ratingsCount: args.ratingsCount,
-      ownership: args.ownership,
-      readStatus: args.readStatus ?? ("unread" as const),
-      addedAt: now,
-    }
-
-    if (args.ownership === "library") {
-      const checkoutDate = args.checkoutDate ?? now
-      return await ctx.db.insert("books", {
-        ...base,
-        checkoutDate,
-        dueDate: args.dueDate ?? checkoutDate + LOAN_PERIOD_MS,
-        returned: false,
-        libraryName: args.libraryName,
-      })
-    }
-
-    return await ctx.db.insert("books", base)
+    const { authorBios: _authorBios, ...input } = args // deprecated field, no longer written
+    return await addOrMoveBook(ctx, userId, input)
   },
 })
 
@@ -275,8 +244,8 @@ export const updateBook = mutation({
     // A book newly finished/started feeds the taste vector (see
     // convex/tasteVector.ts). Books added straight to "read" get picked up here
     // too, on their next status touch, IF they already have an embedding by
-    // then — applyEnrichment below handles the more common case where the
-    // embedding lands after the book's already a taste source.
+    // then — shelfAdd._applyServerEnrichment handles the more common case where
+    // the embedding lands after the book's already a taste source.
     const wasTasteSource = book.readStatus === "read" || book.readStatus === "reading"
     const nextReadStatus = updates.readStatus ?? book.readStatus
     const isTasteSourceNow = nextReadStatus === "read" || nextReadStatus === "reading"
@@ -310,51 +279,17 @@ export const undateReadBooks = mutation({
   },
 })
 
-// Apply a fresh enrichment to an owned book (the detail page's "Re-fetch
-// metadata" action: client calls /api/enrich, then hands the merged record here).
-// Patches the bibliographic + cached-enrichment fields; leaves the user's title,
-// uploaded cover, rating/review, and shelf state alone.
-export const applyEnrichment = mutation({
-  args: {
-    id: v.id("books"),
-    authors: v.array(v.string()),
-    coverId: v.optional(v.number()),
-    coverUrlFallback: v.optional(v.string()),
-    workKey: v.optional(v.string()),
-    firstPublishYear: v.optional(v.number()),
-    pageCount: v.optional(v.number()),
-    ...enrichmentValidators,
-    embedding: v.optional(v.array(v.float64())),
-  },
-  handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx)
-    const book = await getOwnedBook(ctx, userId, args.id)
-    // Preserve existing enrichment when a flaky re-fetch returns empty — a
-    // re-fetch should only improve a record, never blank it out.
-    await ctx.db.patch(args.id, {
-      authors: normalizeAuthors(args.authors),
-      coverId: args.coverId ?? book.coverId,
-      coverUrlFallback: args.coverUrlFallback ?? book.coverUrlFallback,
-      workKey: args.workKey ?? book.workKey,
-      firstPublishYear: sanitizeYear(args.firstPublishYear) ?? book.firstPublishYear,
-      pageCount: args.pageCount ?? book.pageCount,
-      description: args.description ?? book.description,
-      categories: args.categories ?? book.categories,
-      subjects: args.subjects?.length ? normalizeSubjects(args.subjects) : book.subjects,
-      authorBios: args.authorBios ?? book.authorBios,
-      averageRating: args.averageRating ?? book.averageRating,
-      ratingsCount: args.ratingsCount ?? book.ratingsCount,
-      embedding: args.embedding ?? book.embedding,
-    })
-
-    // A book that was already a taste source (added straight to "read", or
-    // read before the embedding pipeline existed) only now has a vector to
-    // contribute — roll it in the moment it arrives.
-    const gotFirstEmbedding = !book.embedding?.length && (args.embedding?.length ?? 0) > 0
-    const isTasteSource = book.readStatus === "read" || book.readStatus === "reading"
-    if (gotFirstEmbedding && isTasteSource) {
-      await rollTasteVector(ctx, userId, args.embedding!)
-    }
+// The detail page's "Re-fetch metadata" action: re-run the server-side enrich
+// (+ embed if missing) for one owned book. Enrichment only ever improves a record
+// (convex/shelfAdd.ts _applyServerEnrichment never blanks a populated field).
+export const refetchMetadata = action({
+  args: { id: v.id("books") },
+  handler: async (ctx, args): Promise<void> => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) throw new Error("Not authenticated")
+    const book = await ctx.runQuery(internal.shelfAdd._getBook, { id: args.id })
+    if (!book || book.userId !== identity.tokenIdentifier) throw new Error("Book not found")
+    await ctx.runAction(internal.shelfAdd.enrichBookById, { id: args.id })
   },
 })
 

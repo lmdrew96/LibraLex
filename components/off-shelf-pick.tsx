@@ -7,7 +7,8 @@ import { EyeOff, Star } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { FriendEndorsement } from "@/convex/discover"
 import { bookKey } from "@/lib/book-key"
-import { bookArgs, enrichInBackground, type AddCandidate } from "@/lib/enrich-on-add"
+import { bookArgs, type AddCandidate } from "@/lib/enrich-on-add"
+import { addResultMessage } from "@/lib/add-result"
 import { cn } from "@/lib/utils"
 import { BookCover } from "@/components/book-cover"
 import { BookInfoDialog } from "@/components/book-info-dialog"
@@ -134,12 +135,11 @@ function Stars({ n }: { n: number }) {
   )
 }
 
-// Add the pick to my shelf or wishlist, then enrich it once in the background —
-// the same path the add-book dialog uses. The live friendCandidates query drops
+// Add the pick to my shelf or wishlist — the same path the add-book dialog uses
+// (enrichment runs server-side after the add). The live friendCandidates query drops
 // the book from the carousel as soon as it lands on my shelf.
 function AddActions({ book, onClose }: { book: OffShelfBook; onClose: () => void }) {
   const addBook = useMutation(api.books.addBook)
-  const applyEnrichment = useMutation(api.books.applyEnrichment)
   const dismissPick = useMutation(api.discover.dismissPick)
   const undismissPick = useMutation(api.discover.undismissPick)
   const [saving, setSaving] = useState(false)
@@ -154,9 +154,8 @@ function AddActions({ book, onClose }: { book: OffShelfBook; onClose: () => void
     if (saving) return
     setSaving(true)
     try {
-      const id = await addBook({ ...bookArgs(book), ownership, readStatus: extras.readStatus })
-      toast.success(extras.message)
-      void enrichInBackground(id, book, applyEnrichment)
+      const result = await addBook({ ...bookArgs(book), ownership, readStatus: extras.readStatus })
+      toast.success(addResultMessage(result, extras.message))
       onClose()
     } catch {
       toast.error("Couldn't add that book.")

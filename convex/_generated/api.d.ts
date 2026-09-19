@@ -27,6 +27,7 @@ import type * as normalize from "../normalize.js";
 import type * as recs from "../recs.js";
 import type * as search from "../search.js";
 import type * as shelf from "../shelf.js";
+import type * as shelfAdd from "../shelfAdd.js";
 import type * as tasteVector from "../tasteVector.js";
 import type * as users from "../users.js";
 import type * as util from "../util.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   recs: typeof recs;
   search: typeof search;
   shelf: typeof shelf;
+  shelfAdd: typeof shelfAdd;
   tasteVector: typeof tasteVector;
   users: typeof users;
   util: typeof util;

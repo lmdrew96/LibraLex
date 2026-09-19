@@ -25,7 +25,7 @@ export type EnrichedBook = {
 
 // The enrich-once engine. A single Google Books ISBN lookup supplies everything —
 // biblio, cover, description, categories — normalized into one record. Runs
-// server-side (the /api/enrich route + the re-fetch action) so the result can be
+// server-side (convex/shelfAdd.ts enrichBookById — on add and on re-fetch) so the result can be
 // cached on the Convex book record — after which the detail view needs zero
 // external calls. The Convex backfill reuses enrichBook directly.
 

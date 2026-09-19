@@ -5,6 +5,7 @@ import { useMutation } from "convex/react"
 import { toast } from "sonner"
 import { Check, Heart, Share2, Star } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import { addResultMessage } from "@/lib/add-result"
 import type { SharedBook } from "@/convex/shelf"
 import { cn } from "@/lib/utils"
 import { BookCover } from "@/components/book-cover"
@@ -74,7 +75,7 @@ function FriendActions({ book }: { book: SharedBook }) {
     if (wished || adding) return
     setAdding(true)
     try {
-      await addBook({
+      const result = await addBook({
         title: book.title,
         authors: book.authors,
         isbn: book.isbn,
@@ -86,7 +87,7 @@ function FriendActions({ book }: { book: SharedBook }) {
         ownership: "wishlist",
       })
       setWished(true)
-      toast.success(`Added “${book.title}” to your wishlist.`)
+      toast.success(addResultMessage(result, `Added “${book.title}” to your wishlist.`))
     } catch {
       toast.error("Couldn't add that to your wishlist.")
     } finally {

@@ -5,13 +5,12 @@ import { normalizeAuthors, sanitizeYear } from "./normalize"
 import {
   dedupeKey,
   endorsementStrength,
-  identityKey,
   isVouchworthy,
   tasteRatingWeight,
 } from "./discover"
 import { hiddenShelfSet, profileFor, toPublicProfile } from "./users"
 import { areFriends } from "./friends"
-import { LOAN_PERIOD_MS } from "./util"
+import { addOrMoveBook, type AddResult } from "./shelfAdd"
 
 // Data layer for the MCP door (convex/http.ts). Every function here is INTERNAL —
 // callable only from other Convex functions, never the public internet. The sole
@@ -197,14 +196,11 @@ const resolveOne = (rows: Doc<"books">[], title: string, author?: string): Match
 }
 
 // Add a book to any shelf from chat ("add Dune to my wishlist", "add X, I own it",
-// "I'm reading Y"). Dedupes across the WHOLE shelf by cross-shelf identity
-// (dedupeKey: workKey → isbn → title+author), so re-adding a book you already have
-// never stacks a duplicate: if it's on the target shelf already it's a no-op
-// ({ status: "exists" }); if it's on a DIFFERENT shelf it MOVES there
-// ({ status: "moved" }) instead of inserting a second row. Library moves capture a
-// checkout + default due date, and moving OFF the library shelf retires the loan
-// fields (mirrors books.updateBook). Bibliographic fields are best-effort — the door
-// enriches via Google Books first, falling back to bare title + author.
+// "I'm reading Y"). Goes through the same shared add path as the web app
+// (convex/shelfAdd.ts): dedupes across the WHOLE shelf (identity, then title +
+// first author across every shelf), so re-adding never stacks a duplicate — a copy
+// already on the target shelf is a no-op ({ status: "exists" }), one on a different
+// shelf MOVES ({ status: "moved" }). New books are enriched + embedded server-side.
 export const addBookForUser = internalMutation({
   args: {
     userId: v.string(),
@@ -220,91 +216,8 @@ export const addBookForUser = internalMutation({
     readStatus: v.optional(readStatusValidator),
     libraryName: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    const all = await ctx.db
-      .query("books")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect()
-
-    // Resolve an existing copy across ALL shelves by cross-shelf identity. Fall back
-    // to a within-target-shelf title match for legacy rows that predate work-key
-    // enrichment (so an old title-only copy still dedupes rather than stacking).
-    const incomingKey = identityKey(args)
-    const existing =
-      all.find((b) => identityKey(b) === incomingKey) ??
-      all.find(
-        (b) =>
-          b.ownership === args.ownership &&
-          normalizeTitle(b.title) === normalizeTitle(args.title),
-      )
-
-    if (existing) {
-      if (existing.ownership === args.ownership) {
-        return { status: "exists" as const, title: existing.title, ownership: args.ownership }
-      }
-      // Move the existing copy to the new shelf instead of inserting a duplicate.
-      // Mirrors books.updateBook's ownership-transition rules so chat and the app
-      // agree on what a shelf move does to read state + loan fields.
-      const moveNow = Date.now()
-      const updates: Partial<Doc<"books">> = { ownership: args.ownership }
-      if (args.readStatus !== undefined) {
-        updates.readStatus = args.readStatus
-        if (args.readStatus === "reading" && !existing.startedAt) updates.startedAt = moveNow
-        if (args.readStatus === "read" && !existing.finishedAt) updates.finishedAt = moveNow
-      }
-      if (args.ownership === "library") {
-        // Becoming a loan — stamp checkout + default due date (mirrors a library add).
-        updates.checkoutDate = moveNow
-        updates.dueDate = moveNow + LOAN_PERIOD_MS
-        updates.returned = false
-        updates.libraryName = args.libraryName ?? existing.libraryName
-      } else {
-        // Leaving the library shelf retires its loan fields — don't carry a stale
-        // dueDate/returned onto a now-owned/wishlisted book.
-        updates.checkoutDate = undefined
-        updates.dueDate = undefined
-        updates.returned = undefined
-        updates.libraryName = undefined
-      }
-      await ctx.db.patch(existing._id, updates)
-      return {
-        status: "moved" as const,
-        title: existing.title,
-        from: existing.ownership,
-        ownership: args.ownership,
-      }
-    }
-
-    const now = Date.now()
-    const base = {
-      userId: args.userId,
-      title: args.title,
-      // Normalize on write — the MCP door's Google Books enrichment emits junk too.
-      authors: normalizeAuthors(args.authors),
-      isbn: args.isbn,
-      coverId: args.coverId,
-      coverUrlFallback: args.coverUrlFallback,
-      workKey: args.workKey,
-      firstPublishYear: sanitizeYear(args.firstPublishYear),
-      pageCount: args.pageCount,
-      ownership: args.ownership,
-      readStatus: args.readStatus ?? ("unread" as const),
-      addedAt: now,
-    }
-
-    if (args.ownership === "library") {
-      await ctx.db.insert("books", {
-        ...base,
-        checkoutDate: now,
-        dueDate: now + LOAN_PERIOD_MS,
-        returned: false,
-        libraryName: args.libraryName,
-      })
-    } else {
-      await ctx.db.insert("books", base)
-    }
-    return { status: "added" as const, title: args.title, ownership: args.ownership }
-  },
+  handler: async (ctx, { userId, ...input }): Promise<AddResult> =>
+    addOrMoveBook(ctx, userId, input),
 })
 
 // Update a book's reading state from chat ("I finished Dune, 5 stars", "I started

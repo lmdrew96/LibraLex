@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { formatDistanceToNow } from "date-fns"
 import { Sparkles, X } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import { addResultMessage } from "@/lib/add-result"
 import { undoToast } from "@/lib/undo-toast"
 import type { Id } from "@/convex/_generated/dataModel"
 import { AppShell } from "@/components/app-shell"
@@ -37,9 +38,12 @@ export default function RecsPage() {
 
   const add = async (recId: Id<"recommendations">, ownership: "owned" | "wishlist", title: string) => {
     try {
-      await addToShelf({ recId, ownership })
+      const result = await addToShelf({ recId, ownership })
       toast.success(
-        `Added “${title}” to your ${ownership === "owned" ? "shelf" : "wishlist"}.`,
+        addResultMessage(
+          result,
+          `Added “${title}” to your ${ownership === "owned" ? "shelf" : "wishlist"}.`,
+        ),
       )
     } catch {
       toast.error("Couldn't add that book.")

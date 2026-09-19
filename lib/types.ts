@@ -26,7 +26,7 @@ export type BookSearchResult = {
 
 /** A fully enriched, cacheable book record — search-result fields plus the merged
  *  enrichment (`description`, `categories`, `subjects`) the enrich-once pipeline
- *  (`convex/enrich.ts` → `/api/enrich`) writes to Convex so the detail view renders
+ *  (`convex/enrich.ts`, run server-side by `convex/shelfAdd.ts`) writes to Convex so the detail view renders
  *  with no external calls. Defined in the engine, re-exported here for the UI. */
 export type { EnrichedBook } from "@/convex/enrich"
 

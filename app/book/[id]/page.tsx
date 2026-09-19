@@ -3,13 +3,13 @@
 import { use, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { useMutation, useQuery } from "convex/react"
+import { useAction, useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { ArrowLeft, ImagePlus, Loader2, RefreshCw, Share2, Star, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { Id } from "@/convex/_generated/dataModel"
-import type { BookInfo as BookInfoData, BookWithCover, EnrichedBook, Ownership, ReadStatus } from "@/lib/types"
+import type { BookInfo as BookInfoData, BookWithCover, Ownership, ReadStatus } from "@/lib/types"
 import { OWNERSHIP_LABELS, READ_STATUS_LABELS } from "@/lib/types"
 import { dueLabel, loanStatus } from "@/lib/loans"
 import { useBookInfo } from "@/lib/use-book-info"
@@ -51,7 +51,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
   const updateBook = useMutation(api.books.updateBook)
   const checkoutBook = useMutation(api.books.checkoutBook)
   const deleteBook = useMutation(api.books.deleteBook)
-  const applyEnrichment = useMutation(api.books.applyEnrichment)
+  const refetch = useAction(api.books.refetchMetadata)
   const router = useRouter()
   const { confirm, confirmDialog } = useConfirm()
 
@@ -69,44 +69,14 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     isbn: hasCachedInfo ? undefined : book?.isbn,
   })
 
-  // Re-fetch metadata on demand: re-run the enrich pipeline for this book and
-  // patch the fresh result in. The only path that hits external sources from the
-  // detail view — normal opens read the cached fields below with zero calls.
+  // Re-fetch metadata on demand: re-run the server-side enrich for this book. The
+  // only path that hits external sources from the detail view — normal opens read
+  // the cached fields below with zero calls. The live query picks up the result.
   const refetchMetadata = async () => {
     if (!book || refetching) return
     setRefetching(true)
     try {
-      const candidate: EnrichedBook = {
-        title: book.title,
-        authors: book.authors,
-        isbn: book.isbn,
-        coverId: book.coverId,
-        coverUrlFallback: book.coverUrlFallback,
-        workKey: book.workKey,
-        firstPublishYear: book.firstPublishYear,
-        pageCount: book.pageCount,
-      }
-      const res = await fetch("/api/enrich", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(candidate),
-      })
-      if (!res.ok) throw new Error("enrich failed")
-      const { book: enriched } = (await res.json()) as { book: EnrichedBook }
-      await applyEnrichment({
-        id: book._id,
-        authors: enriched.authors,
-        coverId: enriched.coverId,
-        coverUrlFallback: enriched.coverUrlFallback,
-        workKey: enriched.workKey,
-        firstPublishYear: enriched.firstPublishYear,
-        pageCount: enriched.pageCount,
-        description: enriched.description,
-        categories: enriched.categories,
-        subjects: enriched.subjects,
-        averageRating: enriched.averageRating,
-        ratingsCount: enriched.ratingsCount,
-      })
+      await refetch({ id: book._id })
       toast.success("Metadata refreshed.")
     } catch {
       toast.error("Couldn't refresh metadata.")
