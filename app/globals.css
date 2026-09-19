@@ -164,9 +164,27 @@ html.dark .cover-placeholder {
   animation: shimmer 1.6s ease-in-out infinite;
 }
 
+/* Reduced motion, app-wide: hover lifts, spinners, skeleton shimmer, toasts and
+   dialog transitions all settle instantly. Hover lifts are also cancelled outright
+   so nothing shifts under the pointer. */
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
   .skeleton {
     animation: none;
+  }
+  /* Only hover-triggered translates — static centering (-translate-y-1/2) is untouched. */
+  .group:hover [class*="group-hover:-translate-"],
+  .group:hover [class*="group-hover:translate-"],
+  [class*=" hover:-translate-"]:hover,
+  [class^="hover:-translate-"]:hover {
+    translate: none !important;
   }
 }
 
