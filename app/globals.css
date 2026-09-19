@@ -38,6 +38,7 @@
   --color-lavender: #b1b4c8; /* Dusk Lavender — borders, muted fills, skeletons */
   --color-purple: #7a70ba; /* Wisteria Bloom — decorative */
   --color-olive: #727f65; /* muted moss — spare accent */
+  --color-scrim: #1e1830; /* deep wisteria-black — dialog backdrops + camera frame; dark in BOTH themes */
 
   /* State accents. The "gold" token is repurposed as the bright Wisteria Bloom
      accent (ratings, "reading" status, status dots). Due-soon deepens the same
@@ -94,6 +95,7 @@ html.dark {
   --color-lavender: #77778e; /* mid wisteria-gray — borders, muted fills, skeletons */
   --color-purple: #958dc8; /* brightened Wisteria Bloom — decorative */
   --color-olive: #8e9984; /* muted moss — spare accent */
+  --color-scrim: #0b0914; /* near-black wisteria — must stay darker than the dark surface so dialogs dim, not lighten */
 
   /* State accents */
   --color-gold: #a29bcf; /* bright wisteria — ratings stars, reading status (pops on dark) */

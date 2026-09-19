@@ -93,7 +93,7 @@ export function BarcodeScanner({
           <p className="text-sm text-ink">{errorMsg}</p>
         </div>
       ) : (
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-ink">
+        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-scrim">
           <video
             ref={videoRef}
             className="h-full w-full object-cover"
