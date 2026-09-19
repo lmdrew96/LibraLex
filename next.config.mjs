@@ -21,6 +21,16 @@ const nextConfig = {
       { protocol: "https", hostname: "books.googleusercontent.com" },
     ],
   },
+  async headers() {
+    // Never let a CDN/browser cache hold a stale service worker — updates to
+    // public/sw.js must reach installed clients on their next visit.
+    return [
+      {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+      },
+    ]
+  },
   async rewrites() {
     // Proxy /mcp/* to the Convex HTTP-actions endpoint so the link users hand to
     // Claude rides our own origin (https://libra.adhdesigns.dev/mcp/<token>) instead

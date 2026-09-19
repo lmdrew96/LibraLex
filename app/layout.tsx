@@ -5,6 +5,7 @@ import { ClerkProvider } from "@clerk/nextjs"
 import { Toaster } from "sonner"
 import { ConvexClientProvider } from "@/components/providers/convex-client-provider"
 import { ThemeProvider } from "@/components/theme-provider"
+import { PwaRegister } from "@/components/pwa-register"
 import "./globals.css"
 
 // Runs synchronously before first paint to set the .dark class from the saved
@@ -82,6 +83,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       >
         <body className="antialiased">
           <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+          <PwaRegister />
           <ThemeProvider>
             <ConvexClientProvider>
               {children}

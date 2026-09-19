@@ -3,9 +3,10 @@
 import { useState } from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
-import { Bot, Copy, Eye, History, Loader2, Palette, RefreshCw, ShieldAlert, Tags, Trash2 } from "lucide-react"
+import { Bot, Copy, Download, Eye, History, Loader2, Palette, RefreshCw, Share, ShieldAlert, Tags, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { GENRES } from "@/lib/genres"
+import { useInstallPrompt } from "@/lib/pwa"
 import type { Ownership } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -33,6 +34,7 @@ export default function SettingsPage() {
   const setFavoriteGenres = useMutation(api.users.setFavoriteGenres)
   const setHiddenShelves = useMutation(api.users.setHiddenShelves)
   const { confirm, confirmDialog } = useConfirm()
+  const { state: installState, install } = useInstallPrompt()
   const [busy, setBusy] = useState(false)
   const [undating, setUndating] = useState(false)
   // Optimistic genre selection so chips toggle instantly; falls back to the live
@@ -165,6 +167,33 @@ export default function SettingsPage() {
         </p>
         <ThemeToggle />
       </section>
+
+      {(installState === "available" || installState === "ios") && (
+        <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
+          <div className="mb-1 flex items-center gap-2">
+            <Download className="h-5 w-5 text-teal" />
+            <h2 className="text-sm font-semibold text-teal">Install LibraLex</h2>
+          </div>
+          {installState === "available" ? (
+            <>
+              <p className="mb-4 max-w-prose text-sm text-teal/90">
+                Add LibraLex to your home screen or dock so it opens like an app — its own window,
+                no browser tabs.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => void install()}>
+                <Download className="h-4 w-4" />
+                Install app
+              </Button>
+            </>
+          ) : (
+            <p className="max-w-prose text-sm text-teal/90">
+              Add LibraLex to your home screen so it opens like an app: tap{" "}
+              <Share className="inline h-4 w-4 align-text-bottom" aria-label="Share" /> Share in
+              Safari, then choose <span className="font-medium">Add to Home Screen</span>.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="mb-5 rounded-[24px] border border-lavender bg-card p-5">
         <div className="mb-1 flex items-center gap-2">
