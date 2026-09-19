@@ -20,6 +20,7 @@ export default function FriendsPage() {
   const profile = useQuery(api.users.getMyProfile)
   const friends = useQuery(api.friends.getFriends)
   const incoming = useQuery(api.friends.getIncomingRequests)
+  const outgoing = useQuery(api.friends.getOutgoingRequests)
 
   const respond = useMutation(api.friends.respondToRequest)
   const remove = useMutation(api.friends.removeFriend)
@@ -90,6 +91,16 @@ export default function FriendsPage() {
       onUndo: () => setDeclinedFlag(friendshipId, false),
       errorMessage: "Couldn't decline.",
     })
+  }
+
+  // Withdraw a request I sent (removeFriend deletes the pending row too).
+  const cancelRequest = async (friendshipId: Id<"friendships">, name: string) => {
+    try {
+      await remove({ friendshipId })
+      toast.success(`Cancelled your request to ${name}.`)
+    } catch {
+      toast.error("Couldn't cancel — they may have just responded.")
+    }
   }
 
   const unfriend = async (friendshipId: Id<"friendships">, name: string) => {
@@ -203,6 +214,34 @@ export default function FriendsPage() {
                 >
                   <X className="h-4 w-4" />
                 </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Requests I've sent, still pending */}
+      {outgoing && outgoing.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-3 text-sm font-semibold text-teal">Sent · waiting on them</h2>
+          <ul className="flex flex-col gap-2">
+            {outgoing.map((req) => (
+              <li
+                key={req.friendshipId}
+                className="flex items-center gap-3 rounded-2xl border border-lavender bg-card p-3"
+              >
+                <FriendAvatar name={req.displayName} avatarUrl={req.avatarUrl} size="md" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-ink">{req.displayName}</p>
+                  <p className="text-xs text-teal">request sent</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => cancelRequest(req.friendshipId, req.displayName)}
+                >
+                  Cancel
+                </Button>
               </li>
             ))}
           </ul>
