@@ -185,7 +185,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
         toast.success(
           readStatus === "reading"
             ? "Moved to Don't own — it's still on your Reading list."
-            : "Marked as read but not owned — find it under History → Read.",
+            : "Moved to Don't own and marked read — find it under History → Read.",
         )
       } else {
         await updateBook({ id: book._id, patch: { ownership: next } })

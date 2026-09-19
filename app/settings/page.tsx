@@ -18,7 +18,7 @@ const FRIEND_SHELVES: { key: Ownership; label: string }[] = [
   { key: "owned", label: "Owned" },
   { key: "wishlist", label: "Wishlist" },
   { key: "library", label: "Library loans" },
-  { key: "none", label: "Read, not owned" },
+  { key: "none", label: "Don't own (read elsewhere)" },
 ]
 import { AppShell } from "@/components/app-shell"
 import { ThemeToggle } from "@/components/theme-toggle"

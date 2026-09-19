@@ -41,7 +41,7 @@ export function ReadNext({ books }: { books: BookWithCover[] }) {
         <div className="min-w-0 flex-1">
           <p className="font-display truncate text-lg font-semibold text-ink">{b.title}</p>
           <p className="truncate text-sm text-teal">{b.authors[0] ?? "Unknown author"}</p>
-          <p className="mt-1 text-sm capitalize text-ink/80">{reason}</p>
+          <p className="mt-1 text-sm text-ink/80 first-letter:uppercase">{reason}</p>
         </div>
         <ArrowRight className="h-5 w-5 shrink-0 text-teal transition-transform group-hover:translate-x-0.5" />
       </Link>

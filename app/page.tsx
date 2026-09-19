@@ -47,6 +47,9 @@ export default function ShelfPage() {
 
   return (
     <AppShell>
+      {/* Every other page has a visible title; the shelf leads with its books, so
+          its page heading is for screen readers and the document outline. */}
+      <h1 className="sr-only">Your shelf</h1>
       {books === undefined ? (
         <BookGridSkeleton />
       ) : books.length === 0 ? (
