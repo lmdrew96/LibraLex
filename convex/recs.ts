@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server"
-import { v } from "convex/values"
+import { ConvexError, v } from "convex/values"
 import { getUserId, requireUserId } from "./util"
 import { areFriends } from "./friends"
 import { profileFor, toPublicProfile } from "./users"
@@ -79,9 +79,9 @@ export const sendRec = mutation({
   },
   handler: async (ctx, args) => {
     const me = await requireUserId(ctx)
-    if (args.toUserId === me) throw new Error("You can't recommend to yourself.")
+    if (args.toUserId === me) throw new ConvexError("You can't recommend to yourself.")
     if (!(await areFriends(ctx, me, args.toUserId))) {
-      throw new Error("You can only recommend books to friends.")
+      throw new ConvexError("You can only recommend books to friends.")
     }
 
     const message = args.message?.trim()
@@ -126,7 +126,7 @@ export const addRecToShelf = mutation({
   handler: async (ctx, args) => {
     const me = await requireUserId(ctx)
     const rec = await ctx.db.get(args.recId)
-    if (!rec || rec.toUserId !== me) throw new Error("Recommendation not found.")
+    if (!rec || rec.toUserId !== me) throw new ConvexError("Recommendation not found.")
 
     // Deliberately NOT carrying coverStorageId: it points at the sender's file,
     // and deleting either book deletes that file. The accepted book keeps the
@@ -156,7 +156,7 @@ export const dismissRec = mutation({
   handler: async (ctx, args) => {
     const me = await requireUserId(ctx)
     const rec = await ctx.db.get(args.recId)
-    if (!rec || rec.toUserId !== me) throw new Error("Recommendation not found.")
+    if (!rec || rec.toUserId !== me) throw new ConvexError("Recommendation not found.")
     await ctx.db.delete(rec._id)
   },
 })

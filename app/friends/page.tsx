@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { Check, ChevronRight, Copy, Link2, UserPlus, Users, X } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import { userMessage } from "@/lib/errors"
 import { undoToast } from "@/lib/undo-toast"
 import type { Id } from "@/convex/_generated/dataModel"
 import { AppShell } from "@/components/app-shell"
@@ -55,7 +56,7 @@ export default function FriendsPage() {
       )
       setCode("")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't send request.")
+      toast.error(userMessage(err, "Couldn't send request."))
     } finally {
       setAdding(false)
     }

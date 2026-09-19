@@ -5,6 +5,7 @@ import { useAction, useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { Bot, Copy, Download, Eye, History, Loader2, Palette, RefreshCw, Share, ShieldAlert, Tags, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import { userMessage } from "@/lib/errors"
 import { GENRES } from "@/lib/genres"
 import { useInstallPrompt } from "@/lib/pwa"
 import type { Ownership } from "@/lib/types"
@@ -86,7 +87,7 @@ export default function SettingsPage() {
       await generate({})
       toast.success(token ? "Generated a fresh MCP link." : "Your MCP link is ready.")
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't generate a link.")
+      toast.error(userMessage(e, "Couldn't generate a link."))
     } finally {
       setBusy(false)
     }

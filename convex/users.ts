@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server"
-import { v } from "convex/values"
+import { ConvexError, v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { getUserId, requireUserId } from "./util"
@@ -24,7 +24,7 @@ const mintFriendCode = async (ctx: MutationCtx): Promise<string> => {
       .unique()
     if (!clash) return code
   }
-  throw new Error("Couldn't mint a unique friend code — try again.")
+  throw new ConvexError("Couldn't mint a unique friend code — try again.")
 }
 
 // The profile shape safe to expose to friends / by-code lookups (never the
@@ -150,7 +150,7 @@ export const setFavoriteGenres = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx)
     const existing = await profileFor(ctx, userId)
-    if (!existing) throw new Error("Profile isn't ready yet — reload and try again.")
+    if (!existing) throw new ConvexError("Profile isn't ready yet — reload and try again.")
     const genres = [...new Set(args.genres.map((g) => g.trim()).filter(Boolean))].slice(0, 24)
     await ctx.db.patch(existing._id, { favoriteGenres: genres })
     return genres
@@ -166,7 +166,7 @@ export const setHiddenShelves = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx)
     const existing = await profileFor(ctx, userId)
-    if (!existing) throw new Error("Profile isn't ready yet — reload and try again.")
+    if (!existing) throw new ConvexError("Profile isn't ready yet — reload and try again.")
     const shelves = [...new Set(args.shelves)]
     await ctx.db.patch(existing._id, { hiddenShelves: shelves })
     return shelves

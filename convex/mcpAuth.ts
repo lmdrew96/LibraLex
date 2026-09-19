@@ -1,5 +1,5 @@
 import { action, mutation, query, internalMutation, internalQuery } from "./_generated/server"
-import { v } from "convex/values"
+import { ConvexError, v } from "convex/values"
 import { internal } from "./_generated/api"
 import { profileFor } from "./users"
 import { getUserId, requireUserId } from "./util"
@@ -73,7 +73,7 @@ export const storeMcpToken = internalMutation({
   handler: async (ctx, { token }) => {
     const userId = await requireUserId(ctx)
     const profile = await profileFor(ctx, userId)
-    if (!profile) throw new Error("Profile isn't ready yet — reload the page and try again.")
+    if (!profile) throw new ConvexError("Profile isn't ready yet — reload the page and try again.")
     await ctx.db.patch(profile._id, { mcpToken: token })
   },
 })

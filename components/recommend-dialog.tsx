@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { Check, Send, Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import { userMessage } from "@/lib/errors"
 import type { Id } from "@/convex/_generated/dataModel"
 import { cn } from "@/lib/utils"
 import { BookCover } from "@/components/book-cover"
@@ -85,7 +86,7 @@ export function RecommendDialog({
         `Recommended “${book.title}”${recipient ? ` to ${recipient.displayName}` : ""}.`,
       )
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't send that rec.")
+      toast.error(userMessage(err, "Couldn't send that rec."))
     } finally {
       setSending(false)
     }

@@ -7,6 +7,7 @@ import { useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { UserPlus } from "lucide-react"
 import { api } from "@/convex/_generated/api"
+import { userMessage } from "@/lib/errors"
 import { AppShell } from "@/components/app-shell"
 import { FriendAvatar } from "@/components/friend-avatar"
 import { Button } from "@/components/ui/button"
@@ -31,7 +32,7 @@ export default function AddByCodePage({
       toast.success(result === "accepted" ? "You're now friends!" : "Friend request sent.")
       router.push("/friends")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't send request.")
+      toast.error(userMessage(err, "Couldn't send request."))
       setSending(false)
     }
   }

@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server"
-import { v } from "convex/values"
+import { ConvexError, v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { getUserId, requireUserId } from "./util"
@@ -135,19 +135,19 @@ export const sendRequestByCode = mutation({
   handler: async (ctx, args): Promise<{ result: "sent" | "accepted" }> => {
     const me = await requireUserId(ctx)
     const code = normalizeCode(args.code)
-    if (!code) throw new Error("Enter a friend code.")
+    if (!code) throw new ConvexError("Enter a friend code.")
 
     const target = await ctx.db
       .query("users")
       .withIndex("by_friendCode", (q) => q.eq("friendCode", code))
       .unique()
-    if (!target) throw new Error("No reader has that code.")
-    if (target.userId === me) throw new Error("That's your own code.")
+    if (!target) throw new ConvexError("No reader has that code.")
+    if (target.userId === me) throw new ConvexError("That's your own code.")
 
     const existing = await findFriendship(ctx, me, target.userId)
     if (existing) {
       if (existing.status === "accepted") {
-        throw new Error(`You and ${target.displayName} are already friends.`)
+        throw new ConvexError(`You and ${target.displayName} are already friends.`)
       }
       // Pending. If they sent it to me, accept it; if I sent it, it's a no-op.
       if (existing.addresseeId === me) {
@@ -157,7 +157,7 @@ export const sendRequestByCode = mutation({
         })
         return { result: "accepted" }
       }
-      throw new Error("You've already sent them a request.")
+      throw new ConvexError("You've already sent them a request.")
     }
 
     await ctx.db.insert("friendships", {
@@ -178,7 +178,7 @@ export const respondToRequest = mutation({
     const me = await requireUserId(ctx)
     const f = await ctx.db.get(args.friendshipId)
     if (!f || f.addresseeId !== me || f.status !== "pending") {
-      throw new Error("That request is no longer available.")
+      throw new ConvexError("That request is no longer available.")
     }
     if (args.accept) {
       await ctx.db.patch(f._id, { status: "accepted", respondedAt: Date.now() })
@@ -196,7 +196,7 @@ export const removeFriend = mutation({
     const me = await requireUserId(ctx)
     const f = await ctx.db.get(args.friendshipId)
     if (!f || (f.requesterId !== me && f.addresseeId !== me)) {
-      throw new Error("Friendship not found.")
+      throw new ConvexError("Friendship not found.")
     }
     await ctx.db.delete(f._id)
   },
