@@ -19,6 +19,29 @@ const placeholderText: Record<CoverSize, string> = {
   L: "text-sm leading-snug p-3",
 }
 
+// Rendered width to request per size, at ~2–3x the CSS width so covers stay
+// sharp on high-DPI phones. Google stores 128px thumbnails; its image server
+// rescales on request via `fife=w<px>` (verified: real covers at 400/600/800px,
+// unlike `zoom=2/3`, which often returns an "image not available" placeholder).
+const REQUEST_WIDTH: Record<CoverSize, number> = { S: 200, M: 400, L: 600 }
+
+/** A higher-resolution variant of a Google Books cover URL, minus the fake
+ *  page-curl (`edge=curl`). Null for non-Google URLs (left as-is). */
+export const sharperGoogleCover = (url: string, width: number): string | null => {
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    return null
+  }
+  if (!u.hostname.endsWith("books.google.com") && !u.hostname.endsWith("googleusercontent.com")) {
+    return null
+  }
+  u.searchParams.delete("edge")
+  u.searchParams.set("fife", `w${width}`)
+  return u.toString()
+}
+
 /**
  * The one place cover URLs get built. Renders from Google Books' thumbnail URL,
  * falling through to a styled spine-colored placeholder if none resolves. The
@@ -31,13 +54,19 @@ export function BookCover({
   size = "M",
   className,
 }: BookCoverProps) {
-  // Ordered candidate sources: a user-uploaded cover wins, then Google's thumbnail.
+  // Ordered candidate sources: a user-uploaded cover wins, then a sharper
+  // rendition of Google's thumbnail, then the stored thumbnail itself (so a
+  // failed upscale still shows the original rather than the placeholder).
   const sources = useMemo(() => {
     const list: string[] = []
     if (coverUrl) list.push(coverUrl)
-    if (coverUrlFallback) list.push(coverUrlFallback)
+    if (coverUrlFallback) {
+      const sharp = sharperGoogleCover(coverUrlFallback, REQUEST_WIDTH[size])
+      if (sharp) list.push(sharp)
+      list.push(coverUrlFallback)
+    }
     return list
-  }, [coverUrl, coverUrlFallback])
+  }, [coverUrl, coverUrlFallback, size])
 
   const [idx, setIdx] = useState(0)
   // Reset the source chain if the book (its cover inputs) changes.

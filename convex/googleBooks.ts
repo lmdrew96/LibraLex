@@ -250,14 +250,50 @@ export const fetchVolumeByTitleAuthor = async (
   try {
     const q = [`intitle:${title}`, author ? `inauthor:${author}` : ""].filter(Boolean).join("+")
     const volumes = await fetchVolumesByQuery(q, { maxResults: 5, ...opts })
-    const want = normalizeTitle(title)
-    const key = want.slice(0, 12)
-    const match = volumes.find((v) => {
-      const got = normalizeTitle(v.title)
-      return Boolean(got) && (got.includes(key) || want.includes(got.slice(0, 12)))
-    })
-    return match ?? null
+    return pickTitleMatch(volumes, title)
   } catch {
     return null
   }
+}
+
+/** The first volume whose title plausibly matches `title` (loose overlap guard),
+ *  or null. With `preferThumbnail`, a matching volume that has a cover wins over
+ *  an earlier match without one — search results often lead with a cover-less
+ *  edition of the same book. Pure, so it's unit-tested. */
+export const pickTitleMatch = <V extends { title: string; thumbnail?: string }>(
+  volumes: V[],
+  title: string,
+  { preferThumbnail = false }: { preferThumbnail?: boolean } = {},
+): V | null => {
+  const want = normalizeTitle(title)
+  const key = want.slice(0, 12)
+  const matches = volumes.filter((v) => {
+    const got = normalizeTitle(v.title)
+    return Boolean(got) && (got.includes(key) || want.includes(got.slice(0, 12)))
+  })
+  if (preferThumbnail) return matches.find((v) => v.thumbnail) ?? matches[0] ?? null
+  return matches[0] ?? null
+}
+
+/** Last-resort cover search for a book whose best-matching volume has no image
+ *  (an ISBN pointing at a foreign or niche edition Google has without a cover).
+ *  Tries English title + author, then English title alone (catches renamed
+ *  authors), preferring any matching volume that actually has a cover. Returns
+ *  the https thumbnail URL or undefined — never throws. */
+export const fetchCoverByTitle = async (
+  title: string,
+  author: string | undefined,
+): Promise<string | undefined> => {
+  const attempts = author ? [author, undefined] : [undefined]
+  for (const a of attempts) {
+    try {
+      const q = [`intitle:${title}`, a ? `inauthor:${a}` : ""].filter(Boolean).join("+")
+      const volumes = await fetchVolumesByQuery(q, { maxResults: 10, langRestrict: "en" })
+      const match = pickTitleMatch(volumes, title, { preferThumbnail: true })
+      if (match?.thumbnail) return match.thumbnail
+    } catch {
+      // try the next, broader query
+    }
+  }
+  return undefined
 }

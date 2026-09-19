@@ -1,5 +1,5 @@
 import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
-import { fetchVolumeByIsbn, fetchVolumeByTitleAuthor } from "./googleBooks"
+import { fetchCoverByTitle, fetchVolumeByIsbn, fetchVolumeByTitleAuthor } from "./googleBooks"
 
 /** A fully enriched, cacheable book record — search-result fields plus the merged
  *  enrichment (description/categories/subjects) written to Convex so the detail
@@ -61,11 +61,19 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
     gb && !isComicCategory(gb.categories) && gb.authors.length > 0 ? gb.authors : undefined
   const authors = normalizeAuthors(firstOf(gbAuthors, candidate.authors) ?? candidate.authors ?? [])
 
+  // The matched volume can lack a cover — typically an ISBN for a foreign/niche
+  // edition Google has without an image. Then look for the same title's cover
+  // separately (keeping the rest of the matched data), so an ISBN hit never
+  // blocks a cover that a title search would find.
+  const cover =
+    firstOf(candidate.coverUrlFallback, gb?.thumbnail) ??
+    (await fetchCoverByTitle(candidate.title, candidate.authors[0]))
+
   return {
     title: candidate.title,
     authors,
     isbn,
-    coverUrlFallback: firstOf(candidate.coverUrlFallback, gb?.thumbnail),
+    coverUrlFallback: cover,
     workKey: firstOf(candidate.workKey, gb?.id),
     firstPublishYear: sanitizeYear(firstOf(gb?.year, candidate.firstPublishYear)),
     pageCount: firstOf(gb?.pageCount, candidate.pageCount),
