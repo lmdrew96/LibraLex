@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { use, useMemo, useState } from "react"
+import Link from "next/link"
 import { useQuery } from "convex/react"
 import { BookMarked } from "lucide-react"
 import { api } from "@/convex/_generated/api"
@@ -11,6 +12,20 @@ import { AddBookDialog } from "@/components/add-book-dialog"
 import { BookGrid, BookGridSkeleton } from "@/components/book-grid"
 import { EmptyState } from "@/components/empty-state"
 import { ReadNext } from "@/components/read-next"
+import { HistoryView } from "@/components/history-view"
+import { WishlistView } from "@/components/wishlist-view"
+
+// Shelf holds every "my books" view — Owned, Wishlist, History — so the top nav
+// fits a phone. The view lives in the URL (?view=) so the old /wishlist and
+// /history routes can redirect straight to it and Back works as expected.
+type View = "owned" | "wishlist" | "history"
+const VIEWS: { key: View; label: string; href: string }[] = [
+  { key: "owned", label: "Owned", href: "/" },
+  { key: "wishlist", label: "Wishlist", href: "/?view=wishlist" },
+  { key: "history", label: "History", href: "/?view=history" },
+]
+const toView = (raw: string | string[] | undefined): View =>
+  raw === "wishlist" || raw === "history" ? raw : "owned"
 
 type Filter = "all" | ReadStatus
 type Sort = "added" | "title" | "author"
@@ -28,7 +43,40 @@ const SORTS: { key: Sort; label: string }[] = [
   { key: "author", label: "Author" },
 ]
 
-export default function ShelfPage() {
+export default function ShelfPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string | string[] }>
+}) {
+  const view = toView(use(searchParams).view)
+
+  return (
+    <AppShell>
+      {/* Every other page has a visible title; the shelf leads with its books, so
+          its page heading is for screen readers and the document outline. */}
+      <h1 className="sr-only">Your shelf</h1>
+      <nav aria-label="Shelf views" className="mb-5 inline-flex rounded-full border border-lavender bg-card p-1">
+        {VIEWS.map((v) => (
+          <Link
+            key={v.key}
+            href={v.href}
+            scroll={false}
+            aria-current={view === v.key ? "page" : undefined}
+            className={cn(
+              "rounded-full px-4 py-1.5 text-sm pointer-coarse:py-3 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal",
+              view === v.key ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/50",
+            )}
+          >
+            {v.label}
+          </Link>
+        ))}
+      </nav>
+      {view === "wishlist" ? <WishlistView /> : view === "history" ? <HistoryView /> : <OwnedView />}
+    </AppShell>
+  )
+}
+
+function OwnedView() {
   const books = useQuery(api.books.listBooks, { ownership: "owned" })
   // Whole library (any shelf) feeds the "Read next" card — taste from read books,
   // candidates from unread. The browse carousels now live on the Recs page.
@@ -46,10 +94,7 @@ export default function ShelfPage() {
   }, [books, filter, sort])
 
   return (
-    <AppShell>
-      {/* Every other page has a visible title; the shelf leads with its books, so
-          its page heading is for screen readers and the document outline. */}
-      <h1 className="sr-only">Your shelf</h1>
+    <>
       {books === undefined ? (
         <BookGridSkeleton />
       ) : books.length === 0 ? (
@@ -107,6 +152,6 @@ export default function ShelfPage() {
           )}
         </div>
       )}
-    </AppShell>
+    </>
   )
 }

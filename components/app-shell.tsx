@@ -5,18 +5,18 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useMutation, useQuery } from "convex/react"
 import { UserButton, useUser } from "@clerk/nextjs"
-import { BookMarked, BookOpen, Heart, Library, Search, Settings, Sparkles, Users } from "lucide-react"
+import { BookMarked, Library, Search, Settings, Sparkles, Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { loanStatus } from "@/lib/loans"
 import { cn } from "@/lib/utils"
 import { AddBookDialog } from "@/components/add-book-dialog"
 import { ThemeQuickToggle } from "@/components/theme-toggle"
 
+// Five tabs so the rail fits a 375px phone without scrolling. Wishlist and
+// History are views inside Shelf (/?view=…), not tabs of their own.
 const NAV = [
   { href: "/", label: "Shelf", icon: BookMarked },
   { href: "/search", label: "Search", icon: Search },
-  { href: "/history", label: "History", icon: BookOpen },
-  { href: "/wishlist", label: "Wishlist", icon: Heart },
   { href: "/loans", label: "Loans", icon: Library },
   { href: "/friends", label: "Friends", icon: Users },
   { href: "/recs", label: "Recs", icon: Sparkles },
@@ -95,8 +95,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <UserButton />
           </div>
         </div>
-        {/* On phones the rail can overflow; the right-edge fade hints that it scrolls. */}
-        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-3 pb-2 [mask-image:linear-gradient(to_right,black_85%,transparent)] sm:[mask-image:none]">
+        {/* overflow-x-auto is only a safety net — five tabs fit a 375px phone. */}
+        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-3 pb-2">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href)
             const badge = badgeFor(href)
@@ -109,12 +109,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                 aria-current={active ? "page" : undefined}
                 aria-label={badge > 0 ? `${label}, ${badge} ${badgeNoun(href, badge)}` : label}
                 className={cn(
-                  "relative flex h-11 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition-colors",
+                  "relative flex h-11 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium transition-colors sm:px-4",
                   active ? "bg-teal text-surface" : "text-ink/85 hover:bg-lavender/60",
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                {/* On phones the 7-tab rail collapses to icons to de-crowd; the active
+                {/* On phones the rail collapses to icons to de-crowd; the active
                     tab keeps its label as the "you are here" anchor, and every tab
                     shows its label again at sm+. aria-label covers screen readers. */}
                 <span className={cn(!active && "hidden sm:inline")}>{label}</span>
