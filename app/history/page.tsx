@@ -49,7 +49,14 @@ export default function HistoryPage() {
   const [tab, setTab] = useState<Tab>("reading")
   // Ownership-agnostic by design: a book you're reading or have read lives on every
   // shelf — owned, borrowed, and "Don't own" reads that aren't in your collection.
-  const books = useQuery(api.books.listBooks, { readStatus: tab })
+  const rows = useQuery(api.books.listBooks, { readStatus: tab })
+  // listBooks sorts by addedAt; History is about when you read, so order Read by
+  // finish date (undated back-catalog reads sink to the bottom rather than jumping
+  // above last week's read just because they were added today) and Reading by
+  // start date.
+  const when = (b: NonNullable<typeof rows>[number]): number =>
+    tab === "read" ? (b.finishedAt ?? 0) : (b.startedAt ?? b.addedAt)
+  const books = rows && [...rows].sort((a, b) => when(b) - when(a))
 
   return (
     <AppShell>
