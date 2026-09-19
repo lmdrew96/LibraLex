@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { auth } from "@clerk/nextjs/server"
+import { GENRES } from "@/lib/genres"
 import { ConvexHttpClient } from "convex/browser"
 import { api } from "@/convex/_generated/api"
 import { fetchVolumesByQuery, type GoogleVolume } from "@/convex/googleBooks"
@@ -13,6 +15,13 @@ import { fetchVolumesByQuery, type GoogleVolume } from "@/convex/googleBooks"
 export const maxDuration = 30
 
 const MAX_SUBJECTS = 4 // bound the fan-out (one Google call each, in parallel)
+const MAX_SUBJECT_LENGTH = 60 // real subject phrases are short; longer is abuse or junk
+
+// The route is public (so Vercel's CDN can cache the genre carousels — see
+// middleware.ts), which would let anyone spend our Google Books quota on arbitrary
+// subjects. So anonymous callers get only the curated genre subjects; free-form
+// subjects (a signed-in user's taste subjects, a book's subjects) need a session.
+const GENRE_SUBJECT_SET = new Set(GENRES.map((g) => g.subject.toLowerCase()))
 const PER_SUBJECT = 14
 const MAX_RESULTS = 40
 const MAX_SUBJECT_TOKENS = 14 // trim each candidate's subject list to keep the payload sane
@@ -135,7 +144,11 @@ export async function GET(request: Request): Promise<NextResponse> {
   // Repeated ?subject= params (not a delimited list) so subject phrases keep any
   // punctuation. page clamps into the same window — page 0 is the popular head;
   // deeper pages backfill dismissals; the ceiling bounds the Google fan-out.
-  const rawSubjects = params.getAll("subject")
+  const { userId } = await auth()
+  const rawSubjects = params
+    .getAll("subject")
+    .filter((s) => s.trim().length <= MAX_SUBJECT_LENGTH)
+    .filter((s) => userId !== null || GENRE_SUBJECT_SET.has(s.trim().toLowerCase()))
   const pageRaw = Number(params.get("page") ?? "0")
   const page = Number.isFinite(pageRaw) ? Math.min(Math.max(Math.floor(pageRaw), 0), 10) : 0
 
