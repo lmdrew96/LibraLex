@@ -188,13 +188,32 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
 
   const changeOwnership = async (next: Ownership) => {
     if (next === book.ownership) return
+    // Leaving the library shelf retires the loan's checkout/due dates for good —
+    // ask first while the loan is still active.
+    if (
+      activeLoan &&
+      !(await confirm({
+        title: "End this library loan?",
+        message: `Moving it to ${OWNERSHIP_LABELS[next]} clears its checkout and due dates. If you just returned it, use Return on the Loans tab instead.`,
+        confirmLabel: "Move it",
+      }))
+    )
+      return
     try {
       if (next === "library") {
         await checkoutBook({ id: book._id })
         toast.success("Moved to library loans — due in 3 weeks. Adjust on the Loans tab.")
       } else if (next === "none") {
-        await updateBook({ id: book._id, patch: { ownership: next } })
-        toast.success("Marked as read but not owned.")
+        // "Don't own" books live in History by read status, so an unread book
+        // must become read or it would vanish from every list. A book you're
+        // mid-way through stays "reading".
+        const readStatus = book.readStatus === "unread" ? "read" : book.readStatus
+        await updateBook({ id: book._id, patch: { ownership: next, readStatus } })
+        toast.success(
+          readStatus === "reading"
+            ? "Moved to Don't own — it's still on your Reading list."
+            : "Marked as read but not owned — find it under History → Read.",
+        )
       } else {
         await updateBook({ id: book._id, patch: { ownership: next } })
         toast.success(`Moved to ${OWNERSHIP_LABELS[next].toLowerCase()}.`)
