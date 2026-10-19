@@ -93,7 +93,7 @@ const cleanDescription = (raw: unknown): string | undefined => {
   return cleaned && isLikelyEnglish(cleaned) ? cleaned : undefined
 }
 
-type Work = { description?: unknown; subjects?: string[] }
+type Work = { description?: unknown; subjects?: string[]; covers?: number[] }
 type Edition = { description?: unknown; subjects?: string[]; covers?: number[]; works?: Array<{ key?: string }> }
 
 const fromWork = async (workKey: string | undefined): Promise<Work | null> =>
@@ -152,7 +152,8 @@ export const fetchOpenLibraryDetails = async (book: {
     const details: OpenLibraryDetails = {
       description,
       subjects: subjects?.length ? subjects : undefined,
-      coverUrlFallback: coverUrl(coverId),
+      // Sparse editions often lack a cover their work has.
+      coverUrlFallback: coverUrl(coverId) ?? coverUrl(work?.covers?.find((c) => c > 0)),
     }
     return details.description || details.subjects || details.coverUrlFallback ? details : null
   } catch (err) {

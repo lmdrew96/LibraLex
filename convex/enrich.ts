@@ -81,20 +81,23 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
   const googleCover =
     firstOf(candidate.coverUrlFallback, gb?.thumbnail) ??
     (await fetchCoverByTitle(candidate.title, candidate.authors[0]))
-  const description = gb?.description ?? descVolume?.description
+  // A saved value (passed in on re-fetch / retry) counts as already known.
+  const description = gb?.description ?? descVolume?.description ?? candidate.description
 
   // Open Library fills only what Google left blank (small-press, comics and new
   // releases are where Google's data is thinnest). Its subjects go to `subjects`
   // only — `categories` stays Google's BISAC tags, which the comic guard reads.
   const ol =
-    !description || !categories?.length || !googleCover
+    !description || (!categories?.length && !candidate.subjects?.length) || !googleCover
       ? await fetchOpenLibraryDetails({ isbn, title: candidate.title, author: candidate.authors[0] })
       : null
   const subjects = categories?.length
     ? normalizeSubjects(categories)
-    : ol?.subjects
-      ? normalizeSubjects(ol.subjects)
-      : undefined
+    : candidate.subjects?.length
+      ? candidate.subjects
+      : ol?.subjects
+        ? normalizeSubjects(ol.subjects)
+        : undefined
 
   return {
     title: candidate.title,
@@ -105,7 +108,7 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
     firstPublishYear: sanitizeYear(firstOf(gb?.year, candidate.firstPublishYear)),
     pageCount: firstOf(gb?.pageCount, candidate.pageCount),
     description: description ?? ol?.description,
-    categories: categories?.length ? categories : undefined,
+    categories: categories?.length ? categories : candidate.categories,
     subjects: subjects?.length ? subjects : undefined,
     averageRating: gb?.averageRating,
     ratingsCount: gb?.ratingsCount,

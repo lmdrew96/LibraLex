@@ -249,6 +249,11 @@ export const enrichBookById = internalAction({
       workKey: book.workKey,
       firstPublishYear: book.firstPublishYear,
       pageCount: book.pageCount,
+      // Saved details count as "already have" — Open Library only fills real
+      // gaps and never replaces Google data on a day Google is unreachable.
+      description: book.description,
+      categories: book.categories,
+      subjects: book.subjects,
     }).catch(() => null)
     const description = enriched?.description ?? book.description
     const subjects = enriched?.subjects ?? book.subjects
@@ -334,36 +339,30 @@ export const embedMissing = internalAction({
 
 // ── Monthly retry for books still missing details (convex/crons.ts) ─────────
 
-// One page of the books table, reduced to the ids with no description yet.
-export const _missingDescriptionPage = internalQuery({
-  args: { cursor: v.union(v.string(), v.null()) },
-  handler: async (ctx, { cursor }) => {
-    const page = await ctx.db.query("books").paginate({ cursor, numItems: 50 })
-    return {
-      ids: page.page.filter((b) => !b.description).map((b) => b._id),
-      cursor: page.continueCursor,
-      isDone: page.isDone,
-    }
-  },
-})
+// Spacing between scheduled re-enrichments: keeps catalog requests sequential-ish
+// (polite to Google's quota and Open Library) without one long-running action.
+const RETRY_SPACING_MS = 10_000
 
 // New releases often have no description anywhere at first; catalogs catch up
 // over the following months. Re-runs enrich (Google, then Open Library) on every
-// book still missing one, a page at a time — each page schedules the next, so no
-// single run nears the action time limit. Nothing is blanked: enrichment only
-// fills gaps (_applyServerEnrichment).
-export const retryMissingDetails = internalAction({
+// book still missing one. Each book is its own scheduled action, so a slow or
+// down catalog can't push one run past the action time limit, and the next page
+// is scheduled before any book runs, so nothing stalls the scan. Nothing is
+// blanked: enrichment only fills gaps (_applyServerEnrichment).
+export const retryMissingDetails = internalMutation({
   args: { cursor: v.optional(v.union(v.string(), v.null())) },
-  handler: async (ctx, { cursor = null }): Promise<{ retried: number }> => {
-    const page: { ids: Id<"books">[]; cursor: string; isDone: boolean } = await ctx.runQuery(
-      internal.shelfAdd._missingDescriptionPage,
-      { cursor },
-    )
-    for (const id of page.ids) await ctx.runAction(internal.shelfAdd.enrichBookById, { id })
-    if (!page.isDone) {
-      await ctx.scheduler.runAfter(30_000, internal.shelfAdd.retryMissingDetails, { cursor: page.cursor })
+  handler: async (ctx, { cursor = null }): Promise<{ scheduled: number }> => {
+    const page = await ctx.db.query("books").paginate({ cursor, numItems: 50 })
+    const ids = page.page.filter((b) => !b.description).map((b) => b._id)
+    for (const [i, id] of ids.entries()) {
+      await ctx.scheduler.runAfter(i * RETRY_SPACING_MS, internal.shelfAdd.enrichBookById, { id })
     }
-    return { retried: page.ids.length }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(ids.length * RETRY_SPACING_MS, internal.shelfAdd.retryMissingDetails, {
+        cursor: page.continueCursor,
+      })
+    }
+    return { scheduled: ids.length }
   },
 })
 
