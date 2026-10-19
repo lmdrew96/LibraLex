@@ -4,7 +4,7 @@ import type { Doc } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { normalizeAuthors } from "./normalize"
 import { assertMaxLength, LOAN_PERIOD_MS, TEXT_LIMITS } from "./util"
-import { addOrMoveBook, readStatusStamps, rollTasteOnStart, type AddResult } from "./shelfAdd"
+import { UNREAD_UNOWNED_MESSAGE, addOrMoveBook, readStatusStamps, rollTasteOnStart, type AddResult } from "./shelfAdd"
 import { internal } from "./_generated/api"
 import { deleteEmbedding } from "./bookEmbeddings"
 
@@ -119,12 +119,16 @@ export const listBooks = query({
 })
 
 // A single book, owner-checked. Returns null if missing or not the caller's.
+// Takes a plain string (it comes straight from the URL) so a malformed id reads
+// as "not here" instead of a validation error crashing the page.
 export const getBook = query({
-  args: { id: v.id("books") },
+  args: { id: v.string() },
   handler: async (ctx, args) => {
     const userId = await getUserId(ctx)
     if (!userId) return null
-    const book = await ctx.db.get(args.id)
+    const id = ctx.db.normalizeId("books", args.id)
+    if (!id) return null
+    const book = await ctx.db.get(id)
     if (!book || book.userId !== userId) return null
     return await withCoverUrl(ctx, book)
   },
@@ -223,6 +227,9 @@ export const updateBook = mutation({
     const now = Date.now()
 
     const { finishedAt: finishedAtInput, rating, ...patch } = args.patch
+    if ((patch.ownership ?? book.ownership) === "none" && (patch.readStatus ?? book.readStatus) === "unread") {
+      throw new ConvexError(UNREAD_UNOWNED_MESSAGE)
+    }
     assertMaxLength(patch.title, TEXT_LIMITS.title, "Title")
     assertMaxLength(patch.review, TEXT_LIMITS.review, "Review")
     if (rating !== undefined && rating !== null && !(Number.isInteger(rating) && rating >= 1 && rating <= 5)) {
@@ -296,12 +303,24 @@ export const undateReadBooks = mutation({
 // (convex/shelfAdd.ts _applyServerEnrichment never blanks a populated field).
 export const refetchMetadata = action({
   args: { id: v.id("books") },
-  handler: async (ctx, args): Promise<void> => {
+  // `updated` says whether the record actually changed. Enrichment is
+  // best-effort and falls back to the saved data when Google is unreachable, so
+  // a before/after comparison is the only honest "refreshed" signal for the UI.
+  handler: async (ctx, args): Promise<{ updated: boolean }> => {
     const identity = await ctx.auth.getUserIdentity()
     if (!identity) throw new Error("Not authenticated")
     const book = await ctx.runQuery(internal.shelfAdd._getBook, { id: args.id })
     if (!book || book.userId !== identity.tokenIdentifier) throw new Error("Book not found")
     await ctx.runAction(internal.shelfAdd.enrichBookById, { id: args.id })
+    const after = await ctx.runQuery(internal.shelfAdd._getBook, { id: args.id })
+    const snapshot = (b: typeof book | null): string =>
+      JSON.stringify(
+        b && [
+          b.authors, b.coverUrlFallback, b.workKey, b.firstPublishYear, b.pageCount, b.description,
+          b.categories, b.subjects, b.averageRating, b.ratingsCount, b.hasEmbedding,
+        ],
+      )
+    return { updated: snapshot(book) !== snapshot(after) }
   },
 })
 

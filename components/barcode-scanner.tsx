@@ -42,19 +42,32 @@ export function BarcodeScanner({
 
         const hints = new Map()
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13])
+        // Spend more effort per frame — phone frames of a curved back cover are
+        // often skewed or soft, and the default pass misses them.
+        hints.set(DecodeHintType.TRY_HARDER, true)
         const reader = new BrowserMultiFormatReader(hints)
 
         if (cancelled || !videoRef.current) return
 
         controls = await reader.decodeFromConstraints(
-          { video: { facingMode: { ideal: "environment" } } },
+          // Ask for HD: the browser default (often 640x480) leaves the bars too
+          // few pixels wide to decode unless the book is held very close.
+          {
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          },
           videoRef.current,
-          (result) => {
+          (result, _err, scanControls) => {
             if (!result || detected) return
             const text = result.getText()
             if (isBookIsbn(text)) {
               detected = true
-              controls?.stop()
+              // The callback's own controls — the outer `controls` isn't assigned
+              // yet if a barcode decodes on the very first frames.
+              scanControls.stop()
               onDetectedRef.current(text)
             }
           },

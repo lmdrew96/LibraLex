@@ -3,7 +3,7 @@
 import { use, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useMutation } from "convex/react"
+import { useConvexAuth, useMutation } from "convex/react"
 import { toast } from "sonner"
 import { UserPlus } from "lucide-react"
 import type { FunctionReturnType } from "convex/server"
@@ -31,9 +31,12 @@ export default function AddByCodePage({
   > | undefined>(undefined)
   const [lookupError, setLookupError] = useState<string | null>(null)
   const lookedUp = useRef<string | null>(null)
+  // Wait for Convex to hold the Clerk token — on a fresh load (the usual way a
+  // share link arrives) an early lookup goes out unauthenticated and fails.
+  const { isAuthenticated } = useConvexAuth()
 
   useEffect(() => {
-    if (lookedUp.current === code) return
+    if (!isAuthenticated || lookedUp.current === code) return
     lookedUp.current = code
     lookup({ code })
       .then(setProfile)
@@ -41,7 +44,7 @@ export default function AddByCodePage({
         setLookupError(userMessage(err, "Couldn't look up that code."))
         setProfile(null)
       })
-  }, [code, lookup])
+  }, [code, lookup, isAuthenticated])
 
   const send = async () => {
     if (sending) return

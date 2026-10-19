@@ -90,7 +90,7 @@ const TOOLS = [
   {
     name: "add_to_wishlist",
     description:
-      "Add a book to the user's wishlist by title (optionally with author to disambiguate). Best-effort enriches with cover/year from Google Books. Idempotent across the whole shelf: a book already on the wishlist isn't duplicated, and a copy already on another shelf (owned/library) is moved to the wishlist instead of creating a second row.",
+      "Add a book to the user's wishlist by title (optionally with author to disambiguate). Best-effort enriches with cover/year from Google Books. Idempotent across the whole shelf: a book already on the wishlist isn't duplicated. A copy the user owns or has on an active library loan stays where it is (the response says alreadyOnShelf with its ownership); a copy on another shelf (e.g. a returned loan or 'none') is moved to the wishlist instead of creating a second row.",
     inputSchema: {
       type: "object",
       properties: {
@@ -103,7 +103,7 @@ const TOOLS = [
   {
     name: "add_book",
     description:
-      "Add a book to a specific shelf by title — use this (not add_to_wishlist) when the user owns it, is reading it, has read it, or borrowed it from the library. Set ownership and optionally readStatus. Best-effort enriches with cover/year from Google Books. Idempotent across the whole shelf: a book already on that shelf isn't duplicated, and a copy already on a DIFFERENT shelf is moved to this one (not duplicated) — moving onto 'library' starts a 3-week loan; moving off 'library' clears the loan.",
+      "Add a book to a specific shelf by title — use this (not add_to_wishlist) when the user owns it, is reading it, has read it, or borrowed it from the library. Set ownership and optionally readStatus. Best-effort enriches with cover/year from Google Books. Idempotent across the whole shelf: a book already on that shelf isn't duplicated, and a copy already on a DIFFERENT shelf is moved to this one (not duplicated) — moving onto 'library' starts a 3-week loan. An owned book or active loan is never moved to 'wishlist' or 'none': it stays put (alreadyOnShelf with its current ownership), though a readStatus of reading/read is still applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -560,7 +560,10 @@ async function dispatch(
       })
       return textContent(
         result.status === "exists"
-          ? { ok: true, alreadyOnWishlist: true, title: result.title }
+          ? result.ownership === "wishlist"
+            ? { ok: true, alreadyOnWishlist: true, title: result.title }
+            : // Owned / active loan: kept on its shelf, not moved to the wishlist.
+              { ok: true, alreadyOnShelf: true, title: result.title, ownership: result.ownership }
           : result.status === "moved"
             ? { ok: true, moved: true, title: result.title, from: result.from, to: "wishlist" }
             : { ok: true, added: true, title: result.title, enriched: Boolean(found) },

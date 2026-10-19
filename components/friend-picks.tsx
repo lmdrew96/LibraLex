@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAction, useQuery } from "convex/react"
+import { useAction, useConvexAuth, useQuery } from "convex/react"
 import { Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { ScoredFriendCandidate } from "@/convex/discover"
@@ -37,8 +37,11 @@ export function FriendPicks({
   // once on mount (and again if `target` toggles into/out of the pool path).
   const friendPicksVector = useAction(api.discover.friendPicksVector)
   const [vectorPicks, setVectorPicks] = useState<ScoredFriendCandidate[] | null>(null)
+  // An action fired before Convex has the Clerk token runs as nobody and returns
+  // [] — wait for auth so a full page load doesn't leave the row empty.
+  const { isAuthenticated } = useConvexAuth()
   useEffect(() => {
-    if (target) return
+    if (target || !isAuthenticated) return
     let cancelled = false
     void friendPicksVector({})
       .then((result) => {
@@ -52,8 +55,8 @@ export function FriendPicks({
     }
     // friendPicksVector's identity isn't guaranteed stable across renders, so
     // it's deliberately left out of the deps — only re-fetch when the mode
-    // (target vs. taste vector) actually changes.
-  }, [target])
+    // (target vs. taste vector) actually changes, or auth arrives.
+  }, [target, isAuthenticated])
 
   const limit = layout === "carousel" ? 12 : 10
 

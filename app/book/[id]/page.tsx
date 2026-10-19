@@ -76,8 +76,9 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     if (!book || refetching) return
     setRefetching(true)
     try {
-      await refetch({ id: book._id })
-      toast.success("Metadata refreshed.")
+      const { updated } = await refetch({ id: book._id })
+      if (updated) toast.success("Metadata refreshed.")
+      else toast("Nothing new found — the details are already up to date, or the catalog is unreachable right now.")
     } catch {
       toast.error("Couldn't refresh metadata.")
     } finally {
@@ -302,7 +303,11 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
           <section className="mt-6">
             <h2 className="mb-2 text-sm font-semibold text-teal">Status</h2>
             <Segmented
-              options={READ_STATUSES.map((s) => ({ value: s, label: READ_STATUS_LABELS[s] }))}
+              // Unread isn't offered for Don't own — it would drop the book off every list.
+              options={READ_STATUSES.filter((s) => book.ownership !== "none" || s !== "unread").map((s) => ({
+                value: s,
+                label: READ_STATUS_LABELS[s],
+              }))}
               value={book.readStatus}
               onChange={(v) => setStatus(v as ReadStatus)}
               label="Reading status"

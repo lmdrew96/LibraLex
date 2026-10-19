@@ -58,6 +58,9 @@ export function AddBookDialog({
   // barcode-scan state
   const [scannedIsbn, setScannedIsbn] = useState<string | null>(null)
   const [looking, setLooking] = useState(false)
+  // A failed lookup pauses the scanner — remounting it with the barcode still in
+  // view would re-fire the lookup (and the error) in a loop while Google is down.
+  const [scanFailed, setScanFailed] = useState(false)
 
   const reset = () => {
     setStep("search")
@@ -72,6 +75,7 @@ export function AddBookDialog({
     setMPages("")
     setScannedIsbn(null)
     setLooking(false)
+    setScanFailed(false)
   }
 
   const handleOpenChange = (next: boolean) => {
@@ -106,9 +110,14 @@ export function AddBookDialog({
     setLooking(true)
     try {
       const res = await fetch(`/api/search?isbn=${encodeURIComponent(isbn)}`)
-      const data = (await res.json()) as { results?: BookSearchResult[] }
+      const data = (await res.json()) as { results?: BookSearchResult[]; error?: string }
       const match = data.results?.[0]
-      if (match) {
+      if (!res.ok) {
+        // Lookup failed (Google down/rate-limited) — not the same as "no such book".
+        // Pause on the scan step; retrying is one tap.
+        setScanFailed(true)
+        toast.error(data.error ?? "Lookup failed. Try scanning again.")
+      } else if (match) {
         pick(match)
       } else {
         setScannedIsbn(isbn)
@@ -216,7 +225,10 @@ export function AddBookDialog({
               searchError={searchError}
               onPick={pick}
               onManual={() => setStep("manual")}
-              onScan={() => setStep("scan")}
+              onScan={() => {
+                setScanFailed(false)
+                setStep("scan")
+              }}
             />
           )}
 
@@ -225,6 +237,16 @@ export function AddBookDialog({
               <div className="flex flex-col items-center gap-3 py-12 text-center">
                 <Loader2 className="h-7 w-7 animate-spin text-teal" />
                 <p className="text-sm text-teal">Looking up the scanned book…</p>
+              </div>
+            ) : scanFailed ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <p className="text-sm text-ink">Couldn&apos;t look that book up just now.</p>
+                <Button variant="primary" size="md" onClick={() => setScanFailed(false)}>
+                  Scan again
+                </Button>
+                <button onClick={() => setStep("search")} className="text-sm font-medium text-teal hover:underline">
+                  Search by title instead
+                </button>
               </div>
             ) : (
               <BarcodeScanner onDetected={handleScanned} onManual={() => setStep("search")} />

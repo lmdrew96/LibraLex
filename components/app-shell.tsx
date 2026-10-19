@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useMutation, useQuery } from "convex/react"
+import { useConvexAuth, useMutation, useQuery } from "convex/react"
 import { UserButton, useUser } from "@clerk/nextjs"
 import { BookMarked, Library, Search, Settings, Sparkles, Users } from "lucide-react"
 import { api } from "@/convex/_generated/api"
@@ -28,18 +28,21 @@ const NAV = [
 function useProfileSync() {
   const { user, isLoaded } = useUser()
   const ensureProfile = useMutation(api.users.ensureProfile)
+  const { isAuthenticated } = useConvexAuth()
 
   const displayName =
     user?.fullName || user?.firstName || user?.username || "Reader"
   const avatarUrl = user?.imageUrl
 
   useEffect(() => {
-    if (!isLoaded || !user) return
+    if (!isLoaded || !user || !isAuthenticated) return
     // Capture the browser's IANA zone so server-side surfaces (the MCP loan
     // countdown) can do date-math on the user's local day boundaries, not UTC.
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    void ensureProfile({ displayName, avatarUrl, timeZone })
-  }, [isLoaded, user, displayName, avatarUrl, ensureProfile])
+    ensureProfile({ displayName, avatarUrl, timeZone }).catch((err: unknown) =>
+      console.error("ensureProfile failed", err),
+    )
+  }, [isLoaded, user, isAuthenticated, displayName, avatarUrl, ensureProfile])
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
