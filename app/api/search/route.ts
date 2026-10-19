@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 import type { BookSearchResult } from "@/lib/types"
-import { fetchJsonWithTimeout, fetchVolumesByQuery, type GoogleVolume } from "@/convex/googleBooks"
+import { fetchVolumesByQuery, type GoogleVolume } from "@/convex/googleBooks"
+import { fetchOpenLibraryByIsbn } from "@/convex/openLibrary"
 
 // Server-side book search — Google Books for search, author catalog, and
-// ISBN/barcode lookup; Open Library backs up the barcode path only (see
-// fetchOpenLibraryByIsbn). Runs server-side so no CORS and no key reaches the
+// ISBN/barcode lookup; Open Library (convex/openLibrary.ts) backs up the
+// barcode path only. Runs server-side so no CORS and no key reaches the
 // client. Client debounces (~500ms).
 export const maxDuration = 30
 
@@ -24,42 +25,6 @@ const ISBN_RE = /^(\d{9}[0-9Xx]|\d{13})$/
 // or retyping a query doesn't spend another Google request. Private: the route
 // sits behind Clerk.
 const CACHE_HEADERS = { "Cache-Control": "private, max-age=300" }
-
-type OpenLibraryBook = {
-  title?: string
-  subtitle?: string
-  authors?: Array<{ name?: string }>
-  number_of_pages?: number
-  publish_date?: string
-  cover?: { small?: string; medium?: string; large?: string }
-}
-
-/** Barcode fallback for ISBNs Google doesn't index. Null on miss or any failure —
- *  it only ever turns a dead end into a hit. Keyless, so it costs no Google quota.
- *  The saved book still gets Google enrichment server-side when Google has it. */
-const fetchOpenLibraryByIsbn = async (isbn: string): Promise<BookSearchResult | null> => {
-  try {
-    const { ok, json } = await fetchJsonWithTimeout(
-      `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&jscmd=data&format=json`,
-      4000,
-    )
-    const book = ok ? (json as Record<string, OpenLibraryBook> | null)?.[`ISBN:${isbn}`] : undefined
-    if (!book?.title) return null
-    const year = book.publish_date?.match(/\d{4}/)?.[0]
-    const cover = book.cover?.large ?? book.cover?.medium
-    return {
-      title: book.subtitle ? `${book.title}: ${book.subtitle}` : book.title,
-      authors: (book.authors ?? []).map((a) => a.name).filter((n): n is string => Boolean(n)),
-      isbn,
-      coverUrlFallback: cover ? cover.replace(/^http:\/\//, "https://") : undefined,
-      firstPublishYear: year ? Number(year) : undefined,
-      pageCount: book.number_of_pages && book.number_of_pages > 0 ? book.number_of_pages : undefined,
-    }
-  } catch (err) {
-    console.error("/api/search Open Library lookup failed:", err instanceof Error ? err.message : err)
-    return null
-  }
-}
 
 export async function GET(request: Request): Promise<NextResponse> {
   const params = new URL(request.url).searchParams

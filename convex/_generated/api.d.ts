@@ -25,6 +25,7 @@ import type * as mcpAuth from "../mcpAuth.js";
 import type * as mcpData from "../mcpData.js";
 import type * as migrations from "../migrations.js";
 import type * as normalize from "../normalize.js";
+import type * as openLibrary from "../openLibrary.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as recs from "../recs.js";
 import type * as search from "../search.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   mcpData: typeof mcpData;
   migrations: typeof migrations;
   normalize: typeof normalize;
+  openLibrary: typeof openLibrary;
   rateLimits: typeof rateLimits;
   recs: typeof recs;
   search: typeof search;

@@ -5,6 +5,7 @@ import {
   fetchVolumeByIsbn,
   fetchVolumeByTitleAuthor,
 } from "./googleBooks"
+import { fetchOpenLibraryDetails } from "./openLibrary"
 
 /** A fully enriched, cacheable book record — search-result fields plus the merged
  *  enrichment (description/categories/subjects) written to Convex so the detail
@@ -66,14 +67,6 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
     gb && !isComicCategory(gb.categories) && gb.authors.length > 0 ? gb.authors : undefined
   const authors = normalizeAuthors(firstOf(gbAuthors, candidate.authors) ?? candidate.authors ?? [])
 
-  // The matched volume can lack a cover — typically an ISBN for a foreign/niche
-  // edition Google has without an image. Then look for the same title's cover
-  // separately (keeping the rest of the matched data), so an ISBN hit never
-  // blocks a cover that a title search would find.
-  const cover =
-    firstOf(candidate.coverUrlFallback, gb?.thumbnail) ??
-    (await fetchCoverByTitle(candidate.title, candidate.authors[0]))
-
   // Same for the description: a foreign edition's description is blanked by
   // mapVolume (English-only), which would leave the book with none at all — so
   // borrow the English title match's description (and categories, if the
@@ -82,18 +75,41 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
     ? null
     : await fetchTitleMatchWith(candidate.title, candidate.authors[0], (v) => Boolean(v.description))
   const categories = gb?.categories?.length ? gb.categories : descVolume?.categories
+  // The matched volume can lack a cover — typically an ISBN for a foreign/niche
+  // edition Google has without an image. Then look for the same title's cover
+  // separately, so an ISBN hit never blocks a cover that a title search would find.
+  const googleCover =
+    firstOf(candidate.coverUrlFallback, gb?.thumbnail) ??
+    (await fetchCoverByTitle(candidate.title, candidate.authors[0]))
+  // A saved value (passed in on re-fetch / retry) counts as already known.
+  const description = gb?.description ?? descVolume?.description ?? candidate.description
+
+  // Open Library fills only what Google left blank (small-press, comics and new
+  // releases are where Google's data is thinnest). Its subjects go to `subjects`
+  // only — `categories` stays Google's BISAC tags, which the comic guard reads.
+  const ol =
+    !description || (!categories?.length && !candidate.subjects?.length) || !googleCover
+      ? await fetchOpenLibraryDetails({ isbn, title: candidate.title, author: candidate.authors[0] })
+      : null
+  const subjects = categories?.length
+    ? normalizeSubjects(categories)
+    : candidate.subjects?.length
+      ? candidate.subjects
+      : ol?.subjects
+        ? normalizeSubjects(ol.subjects)
+        : undefined
 
   return {
     title: candidate.title,
     authors,
     isbn,
-    coverUrlFallback: cover,
+    coverUrlFallback: googleCover ?? ol?.coverUrlFallback,
     workKey: firstOf(candidate.workKey, gb?.id),
     firstPublishYear: sanitizeYear(firstOf(gb?.year, candidate.firstPublishYear)),
     pageCount: firstOf(gb?.pageCount, candidate.pageCount),
-    description: gb?.description ?? descVolume?.description,
-    categories: categories?.length ? categories : undefined,
-    subjects: categories?.length ? normalizeSubjects(categories) : undefined,
+    description: description ?? ol?.description,
+    categories: categories?.length ? categories : candidate.categories,
+    subjects: subjects?.length ? subjects : undefined,
     averageRating: gb?.averageRating,
     ratingsCount: gb?.ratingsCount,
   }
