@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import type { BookSearchResult } from "@/lib/types"
 
-/** Debounced (~300ms) book search against `/api/search`. Returns the live results
+/** Debounced (~500ms) book search against `/api/search`. Returns the live results
  *  for the current query, a `searching` flag, and a user-facing `error` string.
  *  Queries under 2 characters are treated as empty. Aborts the in-flight request
  *  when the query changes or the consumer unmounts. Shared by the add-book flow
@@ -47,7 +47,7 @@ export function useBookSearch(query: string): {
       } finally {
         if (!ctrl.signal.aborted) setSearching(false)
       }
-    }, 300)
+    }, 500)
     return () => {
       clearTimeout(timer)
       ctrl.abort()

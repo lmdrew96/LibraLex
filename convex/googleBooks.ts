@@ -18,6 +18,9 @@ const DEFAULT_TIMEOUT_MS = 4000
 // array, so retrying a non-2xx never masks a real "not found." Escalating but
 // still bounded since /api/search hits this on every keystroke and has a 30s
 // Vercel budget: worst case here is 4 * DEFAULT_TIMEOUT_MS + 2100ms ≈ 18s.
+// Only 5xx and network/timeout failures retry: a 4xx (429 quota/rate limit
+// above all) won't succeed 300ms later, and retrying it 4x per keystroke is
+// what kept search pinned at the rate limit.
 const FETCH_RETRY_ATTEMPTS = 4
 const FETCH_RETRY_DELAYS_MS = [300, 600, 1200]
 
@@ -62,7 +65,7 @@ export const fetchJsonWithTimeout = async (
   for (let attempt = 1; attempt <= FETCH_RETRY_ATTEMPTS; attempt++) {
     try {
       lastResult = await fetchJsonOnce(url, ms)
-      if (lastResult.ok) return lastResult
+      if (lastResult.ok || lastResult.status < 500) return lastResult
     } catch (err) {
       lastError = err
     }

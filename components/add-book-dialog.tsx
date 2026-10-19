@@ -106,9 +106,13 @@ export function AddBookDialog({
     setLooking(true)
     try {
       const res = await fetch(`/api/search?isbn=${encodeURIComponent(isbn)}`)
-      const data = (await res.json()) as { results?: BookSearchResult[] }
+      const data = (await res.json()) as { results?: BookSearchResult[]; error?: string }
       const match = data.results?.[0]
-      if (match) {
+      if (!res.ok) {
+        // Lookup failed (Google down/rate-limited) — not the same as "no such book".
+        // Stay on the scanner so a retry is one more scan.
+        toast.error(data.error ?? "Lookup failed. Try scanning again.")
+      } else if (match) {
         pick(match)
       } else {
         setScannedIsbn(isbn)
