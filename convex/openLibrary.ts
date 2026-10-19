@@ -1,0 +1,162 @@
+import { fetchJsonWithTimeout, isSameBook, stripHtml } from "./googleBooks"
+import { isLikelyEnglish } from "./normalize"
+
+// Open Library — the backup catalog behind Google Books. Google stays primary
+// everywhere; this only fills what Google left blank: the barcode lookup when
+// Google has no match (app/api/search), and description / subjects / cover in
+// enrichBook (convex/enrich.ts). Keyless, so it costs no Google quota. Every
+// helper is fault-tolerant — null on a miss or any failure, never throws.
+// Self-contained (imports only from convex/) like googleBooks.ts, so both the
+// Convex bundle and the Next.js API route can import it.
+
+const OL = "https://openlibrary.org"
+const TIMEOUT_MS = 4000
+
+const toHttps = (url: string): string => url.replace(/^http:\/\//, "https://")
+const coverUrl = (id: number | undefined): string | undefined =>
+  id && id > 0 ? `https://covers.openlibrary.org/b/id/${id}-L.jpg` : undefined
+
+const getJson = async (url: string): Promise<unknown> => {
+  const { ok, json } = await fetchJsonWithTimeout(url, TIMEOUT_MS)
+  return ok ? json : null
+}
+
+/** What the barcode lookup needs — the shape of a `/api/search` result. */
+export type OpenLibraryHit = {
+  title: string
+  authors: string[]
+  isbn: string
+  coverUrlFallback?: string
+  firstPublishYear?: number
+  pageCount?: number
+}
+
+type BooksApiData = {
+  title?: string
+  subtitle?: string
+  authors?: Array<{ name?: string }>
+  number_of_pages?: number
+  publish_date?: string
+  cover?: { small?: string; medium?: string; large?: string }
+}
+
+/** Barcode fallback for ISBNs Google doesn't index. */
+export const fetchOpenLibraryByIsbn = async (isbn: string): Promise<OpenLibraryHit | null> => {
+  try {
+    const json = (await getJson(
+      `${OL}/api/books?bibkeys=ISBN:${isbn}&jscmd=data&format=json`,
+    )) as Record<string, BooksApiData> | null
+    const book = json?.[`ISBN:${isbn}`]
+    if (!book?.title) return null
+    const year = book.publish_date?.match(/\d{4}/)?.[0]
+    const cover = book.cover?.large ?? book.cover?.medium
+    return {
+      title: book.subtitle ? `${book.title}: ${book.subtitle}` : book.title,
+      authors: (book.authors ?? []).map((a) => a.name).filter((n): n is string => Boolean(n)),
+      isbn,
+      coverUrlFallback: cover ? toHttps(cover) : undefined,
+      firstPublishYear: year ? Number(year) : undefined,
+      pageCount: book.number_of_pages && book.number_of_pages > 0 ? book.number_of_pages : undefined,
+    }
+  } catch (err) {
+    console.error("Open Library ISBN lookup failed:", err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+/** The enrichment fields Open Library can fill. */
+export type OpenLibraryDetails = {
+  description?: string
+  subjects?: string[]
+  coverUrlFallback?: string
+}
+
+// Description comes as a plain string or { type, value }. Open Library appends
+// source credits and markdown link refs — trim those, and keep English only
+// (same guard as Google's descriptions).
+const cleanDescription = (raw: unknown): string | undefined => {
+  const text =
+    typeof raw === "string"
+      ? raw
+      : typeof raw === "object" && raw !== null && typeof (raw as { value?: unknown }).value === "string"
+        ? (raw as { value: string }).value
+        : undefined
+  if (!text) return undefined
+  const cleaned = stripHtml(text)
+    .split(/\n-{3,}/)[0] // "----------" divider before "Contains:"/source sections
+    .replace(/\(\[source\]\[\d+\]\)/gi, "")
+    .replace(/(\*\*|__)(.+?)\1/g, "$2") // markdown bold — the book page renders plain text
+    .replace(/^\s*\[\d+\]:\s*\S+\s*$/gm, "") // markdown link-ref lines
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+  return cleaned && isLikelyEnglish(cleaned) ? cleaned : undefined
+}
+
+type Work = { description?: unknown; subjects?: string[] }
+type Edition = { description?: unknown; subjects?: string[]; covers?: number[]; works?: Array<{ key?: string }> }
+
+const fromWork = async (workKey: string | undefined): Promise<Work | null> =>
+  workKey ? ((await getJson(`${OL}${workKey}.json`)) as Work | null) : null
+
+/** Description / subjects / cover for a book: by ISBN (edition, then its work),
+ *  else by title + author search. Null when Open Library has nothing useful. */
+export const fetchOpenLibraryDetails = async (book: {
+  isbn?: string
+  title: string
+  author?: string
+}): Promise<OpenLibraryDetails | null> => {
+  try {
+    let edition: Edition | null = null
+    let workKey: string | undefined
+    let coverId: number | undefined
+
+    if (book.isbn) {
+      edition = (await getJson(`${OL}/isbn/${book.isbn}.json`)) as Edition | null
+      workKey = edition?.works?.[0]?.key
+      coverId = edition?.covers?.[0]
+    }
+    // Title search only with an author: title alone matches the wrong book far
+    // too easily ("Diana" → a Princess Diana biography).
+    if (!edition && book.author) {
+      const params = new URLSearchParams({
+        title: book.title,
+        fields: "key,title,author_name,cover_i",
+        limit: "5",
+      })
+      params.set("author", book.author)
+      const found = (await getJson(`${OL}/search.json?${params}`)) as {
+        docs?: Array<{ key?: string; title?: string; author_name?: string[]; cover_i?: number }>
+      } | null
+      // Strict same-book check (title equal, first authors agree) — a loose title
+      // match would attach another book's description ("Diana" vs "Diana: Her
+      // True Story").
+      const want = { title: book.title, authors: [book.author] }
+      const match = (found?.docs ?? []).find(
+        (d) => d.key && d.title && isSameBook(want, { title: d.title, authors: d.author_name ?? [] }),
+      )
+      if (!match) return null
+      workKey = match.key
+      coverId = match.cover_i
+    }
+
+    if (!workKey && !edition) return null
+    const work = await fromWork(workKey)
+    const description = cleanDescription(edition?.description) ?? cleanDescription(work?.description)
+    // Work subjects first: they're curated across editions, while a single
+    // edition's are often mislabeled. Capped — the long tail is noise.
+    // "collectionid:…" / "nyt:…" are machine tags, not subjects.
+    const subjects = (work?.subjects?.length ? work.subjects : edition?.subjects)
+      ?.filter((s) => !s.includes(":"))
+      .slice(0, 8)
+    const details: OpenLibraryDetails = {
+      description,
+      subjects: subjects?.length ? subjects : undefined,
+      coverUrlFallback: coverUrl(coverId),
+    }
+    return details.description || details.subjects || details.coverUrlFallback ? details : null
+  } catch (err) {
+    console.error("Open Library details lookup failed:", err instanceof Error ? err.message : err)
+    return null
+  }
+}

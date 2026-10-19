@@ -332,6 +332,41 @@ export const embedMissing = internalAction({
   },
 })
 
+// ── Monthly retry for books still missing details (convex/crons.ts) ─────────
+
+// One page of the books table, reduced to the ids with no description yet.
+export const _missingDescriptionPage = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { cursor }) => {
+    const page = await ctx.db.query("books").paginate({ cursor, numItems: 50 })
+    return {
+      ids: page.page.filter((b) => !b.description).map((b) => b._id),
+      cursor: page.continueCursor,
+      isDone: page.isDone,
+    }
+  },
+})
+
+// New releases often have no description anywhere at first; catalogs catch up
+// over the following months. Re-runs enrich (Google, then Open Library) on every
+// book still missing one, a page at a time — each page schedules the next, so no
+// single run nears the action time limit. Nothing is blanked: enrichment only
+// fills gaps (_applyServerEnrichment).
+export const retryMissingDetails = internalAction({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, { cursor = null }): Promise<{ retried: number }> => {
+    const page: { ids: Id<"books">[]; cursor: string; isDone: boolean } = await ctx.runQuery(
+      internal.shelfAdd._missingDescriptionPage,
+      { cursor },
+    )
+    for (const id of page.ids) await ctx.runAction(internal.shelfAdd.enrichBookById, { id })
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(30_000, internal.shelfAdd.retryMissingDetails, { cursor: page.cursor })
+    }
+    return { retried: page.ids.length }
+  },
+})
+
 // ── Read-status transitions (shared by books.updateBook + the MCP door) ─────
 
 // "Don't own" books live in History, which lists by read status — an unread one
