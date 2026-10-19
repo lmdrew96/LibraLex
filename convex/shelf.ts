@@ -53,12 +53,15 @@ export const getFriendShelf = query({
   // Routed by the friend's `users` document id — a URL-safe Convex id, never the
   // Clerk tokenIdentifier (which contains "://" and "|" and can't survive a
   // single dynamic route segment).
-  args: { friendId: v.id("users") },
+  // Plain string (from the URL); a malformed id resolves to null below.
+  args: { friendId: v.string() },
   handler: async (ctx, args) => {
     const me = await getUserId(ctx)
     if (!me) return null
 
-    const profile = await ctx.db.get(args.friendId)
+    const friendId = ctx.db.normalizeId("users", args.friendId)
+    if (!friendId) return null
+    const profile = await ctx.db.get(friendId)
     if (!profile) return null
     if (profile.userId === me) return null // use your own shelf views
     if (!(await areFriends(ctx, me, profile.userId))) return null

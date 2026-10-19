@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useMutation, useQuery } from "convex/react"
+import { useConvexAuth, useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { formatDistanceToNow } from "date-fns"
 import { Sparkles, X } from "lucide-react"
@@ -30,11 +30,15 @@ export default function RecsPage() {
   const addToShelf = useMutation(api.recs.addRecToShelf)
   const dismiss = useMutation(api.recs.dismissRec)
 
-  // Clear the unread badge once the inbox is open. Idempotent, so a strict-mode
-  // double-invoke is harmless.
+  // Clear the unread badge once the inbox is open, and again when a new rec
+  // arrives while it's open. Idempotent, so a strict-mode double-invoke is
+  // harmless. Waits for auth — an early call fails unauthenticated.
+  const { isAuthenticated } = useConvexAuth()
+  const inboxCount = inbox?.length
   useEffect(() => {
-    void markAllRead({})
-  }, [markAllRead])
+    if (!isAuthenticated) return
+    markAllRead({}).catch((err: unknown) => console.error("markAllRead failed", err))
+  }, [markAllRead, isAuthenticated, inboxCount])
 
   const add = async (recId: Id<"recommendations">, ownership: "owned" | "wishlist", title: string) => {
     try {

@@ -1,5 +1,5 @@
 import { internalMutation, internalQuery } from "./_generated/server"
-import { v } from "convex/values"
+import { ConvexError, v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { normalizeAuthors, sanitizeYear } from "./normalize"
 import {
@@ -10,7 +10,7 @@ import {
 } from "./discover"
 import { hiddenShelfSet, profileFor, toPublicProfile } from "./users"
 import { areFriends } from "./friends"
-import { addOrMoveBook, readStatusStamps, rollTasteOnStart, type AddResult } from "./shelfAdd"
+import { UNREAD_UNOWNED_MESSAGE, addOrMoveBook, readStatusStamps, rollTasteOnStart, type AddResult } from "./shelfAdd"
 
 // Data layer for the MCP door (convex/http.ts). Every function here is INTERNAL —
 // callable only from other Convex functions, never the public internet. The sole
@@ -244,6 +244,9 @@ export const setReadingStatusForUser = internalMutation({
     const book = match.book
     const now = Date.now()
     const updates: Partial<Doc<"books">> = {}
+    if (args.readStatus === "unread" && book.ownership === "none") {
+      throw new ConvexError(UNREAD_UNOWNED_MESSAGE)
+    }
     if (args.readStatus !== undefined) {
       updates.readStatus = args.readStatus
       Object.assign(updates, readStatusStamps(book, args.readStatus, now))

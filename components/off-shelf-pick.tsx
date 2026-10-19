@@ -174,7 +174,12 @@ function AddActions({ book, onClose }: { book: OffShelfBook; onClose: () => void
     try {
       await dismissPick({ key })
       toast(`Got it — won't suggest “${book.title}” again.`, {
-        action: { label: "Undo", onClick: () => void undismissPick({ key }) },
+        action: {
+          label: "Undo",
+          onClick: () => {
+            undismissPick({ key }).catch(() => toast.error("Couldn't undo that. Try again."))
+          },
+        },
       })
     } catch {
       toast.error("Couldn't update that. Try again.")

@@ -15,8 +15,9 @@ import { assertMaxLength, LOAN_PERIOD_MS, TEXT_LIMITS } from "./util"
 // (books.addBook), accepting a rec (recs.addRecToShelf) and the MCP door
 // (mcpData.addBookForUser), so every surface dedupes and enriches identically:
 //
-//  1. Dedupe across ALL the user's shelves. Same shelf → no-op ("exists");
-//     different shelf → move the existing row ("moved"); otherwise insert ("added").
+//  1. Dedupe across ALL the user's shelves. Same shelf, or a downgrade off
+//     Owned / an active loan → no-op ("exists"); different shelf → move the
+//     existing row ("moved"); otherwise insert ("added").
 //  2. A newly added book schedules server-side enrich + embed (enrichBookById),
 //     so no add path can leave a bare, unembedded row — and embeddings are never
 //     accepted from the client.
@@ -87,6 +88,23 @@ export const addOrMoveBook = async (
   if (existing) {
     const reborrow =
       input.ownership === "library" && existing.ownership === "library" && existing.returned === true
+    // Adding from a rec / friend / discover card never downgrades: a book you
+    // own or have on an active loan stays put rather than being moved to the
+    // wishlist or history (which would silently wipe the loan's dates). Moving
+    // it on purpose is the book page's job, which confirms first.
+    const activeLoan = existing.ownership === "library" && existing.returned !== true
+    const downgrade =
+      (existing.ownership === "owned" || activeLoan) &&
+      (input.ownership === "wishlist" || input.ownership === "none")
+    if (downgrade) {
+      // Still honor the read-state half of "I've read it" — just not the move.
+      const next = input.readStatus && input.readStatus !== "unread" ? input.readStatus : undefined
+      if (next && next !== existing.readStatus) {
+        await ctx.db.patch(existing._id, { readStatus: next, ...readStatusStamps(existing, next, now) })
+        await rollTasteOnStart(ctx, existing, next)
+      }
+      return { status: "exists", id: existing._id, title: existing.title, ownership: existing.ownership }
+    }
     if (existing.ownership === input.ownership && !reborrow) {
       return { status: "exists", id: existing._id, title: existing.title, ownership: input.ownership }
     }
@@ -315,6 +333,11 @@ export const embedMissing = internalAction({
 })
 
 // ── Read-status transitions (shared by books.updateBook + the MCP door) ─────
+
+// "Don't own" books live in History, which lists by read status — an unread one
+// would show up on no list at all, so that combination is refused.
+export const UNREAD_UNOWNED_MESSAGE =
+  "Books you don't own live in History, so they can't be unread. Mark it reading or read, or move it to a shelf first."
 
 // Date stamps for a read-status change. Starting a book stamps startedAt the
 // first time, and again on a RE-read (read → reading). Finishing stamps finishedAt
