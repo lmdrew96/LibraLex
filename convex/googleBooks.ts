@@ -233,7 +233,12 @@ export const fetchVolumesByQuery = async (
     `${VOLUMES_URL}?${qs}${googleApiKeyParam()}`,
     opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   )
-  if (!ok) throw new Error(`Google Books responded ${status}`)
+  if (!ok) {
+    // Google's own reason ("Quota exceeded…", "API key not valid…", a referrer
+    // block) — the status alone can't tell those apart. Never includes the key.
+    const reason = (json as { error?: { message?: string } } | null)?.error?.message
+    throw new Error(`Google Books responded ${status}${reason ? `: ${reason}` : ""}`)
+  }
   const items = (json as { items?: GoogleVolumeItem[] } | null)?.items ?? []
   return items.map(mapVolume).filter((v): v is GoogleVolume => v !== null)
 }

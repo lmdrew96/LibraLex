@@ -46,7 +46,8 @@ export async function GET(request: Request): Promise<NextResponse> {
         langRestrict: "en",
       })
       return NextResponse.json({ results: volumes.map(toSearchResult) }, { headers: CACHE_HEADERS })
-    } catch {
+    } catch (err) {
+      console.error("/api/search author lookup failed:", err instanceof Error ? err.message : err)
       return NextResponse.json(
         { results: [], error: "Couldn't load this author's books. Try again." },
         { status: 504 },
@@ -69,7 +70,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       // Pin the scanned ISBN so the saved book keeps the exact code even if Google's
       // matched edition reports a different one.
       return NextResponse.json({ results: [{ ...toSearchResult(volume), isbn }] }, { headers: CACHE_HEADERS })
-    } catch {
+    } catch (err) {
+      console.error("/api/search ISBN lookup failed:", err instanceof Error ? err.message : err)
       return NextResponse.json(
         { results: [], error: "Book lookup is unavailable right now. Try again in a minute." },
         { status: 504 },
@@ -84,7 +86,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   try {
     const volumes = await fetchVolumesByQuery(query, { maxResults: 10, langRestrict: "en" })
     return NextResponse.json({ results: volumes.map(toSearchResult) }, { headers: CACHE_HEADERS })
-  } catch {
+  } catch (err) {
+    console.error("/api/search text search failed:", err instanceof Error ? err.message : err)
     return NextResponse.json(
       { results: [], error: "Search is unavailable right now. Try again." },
       { status: 504 },
