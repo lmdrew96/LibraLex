@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
 import type { BookSearchResult } from "@/lib/types"
 import { fetchVolumesByQuery, type GoogleVolume } from "@/convex/googleBooks"
-import { fetchOpenLibraryByIsbn } from "@/convex/openLibrary"
+import { fetchOpenLibraryByIsbn, searchOpenLibrary } from "@/convex/openLibrary"
 
 // Server-side book search — Google Books for search, author catalog, and
 // ISBN/barcode lookup; Open Library (convex/openLibrary.ts) backs up the
-// barcode path only. Runs server-side so no CORS and no key reaches the
-// client. Client debounces (~500ms).
+// barcode and typed-search paths. Runs server-side so no CORS and no key
+// reaches the client. The client only searches on submit.
 export const maxDuration = 30
 
 const toSearchResult = (v: GoogleVolume): BookSearchResult => ({
@@ -29,6 +29,27 @@ const describeFailure = (err: unknown): string => {
   const status = msg.match(/responded (\d{3})/)?.[1]
   if (status === "429") return `quota/rate limit (429) — ${msg}`
   return status ? `upstream ${status} — ${msg}` : msg
+}
+
+const STOPWORDS = new Set(["the", "a", "an", "and", "of", "to", "in", "on", "for", "by"])
+const words = (s: string): string[] =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 1 && !STOPWORDS.has(w))
+
+// Conservative "did Google find it?" check: some result's title + authors
+// contain every main word of the query. "Stand Still Stay Silent" → Google's
+// webcomics guides and dictionaries fail it; "Minna Sundberg" passes on author.
+const hasPlausibleMatch = (results: BookSearchResult[], query: string): boolean => {
+  const wanted = words(query)
+  if (wanted.length === 0) return results.length > 0
+  return results.some((r) => {
+    const have = new Set(words(`${r.title} ${r.authors.join(" ")}`))
+    return wanted.every((w) => have.has(w))
+  })
 }
 
 // Successful lookups are cached by the browser for a few minutes, so backspacing
@@ -104,14 +125,30 @@ export async function GET(request: Request): Promise<NextResponse> {
   if (query.length < 2) {
     return NextResponse.json({ results: [] satisfies BookSearchResult[] })
   }
+  // Google first; Open Library when Google fails or nothing it returned looks
+  // like the query. Only an outage on both sides reads as an error — a query
+  // neither catalog knows is "no matches".
+  let fromGoogle: BookSearchResult[] = []
+  let googleFailed = false
   try {
     const volumes = await fetchVolumesByQuery(query, { maxResults: 10, langRestrict: "en" })
-    return NextResponse.json({ results: volumes.map(toSearchResult) }, { headers: CACHE_HEADERS })
+    fromGoogle = volumes.map(toSearchResult)
   } catch (err) {
+    googleFailed = true
     console.error("/api/search text search failed:", describeFailure(err))
+  }
+  if (!googleFailed && hasPlausibleMatch(fromGoogle, query)) {
+    return NextResponse.json({ results: fromGoogle }, { headers: CACHE_HEADERS })
+  }
+  const fromOpenLibrary = await searchOpenLibrary(query)
+  if (fromOpenLibrary?.length) {
+    return NextResponse.json({ results: fromOpenLibrary }, { headers: CACHE_HEADERS })
+  }
+  if (googleFailed && fromOpenLibrary === null) {
     return NextResponse.json(
       { results: [], error: "Search is unavailable right now. Try again." },
       { status: 504 },
     )
   }
+  return NextResponse.json({ results: fromGoogle }, { headers: CACHE_HEADERS })
 }

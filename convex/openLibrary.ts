@@ -2,9 +2,9 @@ import { fetchJsonWithTimeout, isSameBook, stripHtml } from "./googleBooks"
 import { isLikelyEnglish } from "./normalize"
 
 // Open Library — the backup catalog behind Google Books. Google stays primary
-// everywhere; this only fills what Google left blank: the barcode lookup when
-// Google has no match (app/api/search), and description / subjects / cover in
-// enrichBook (convex/enrich.ts). Keyless, so it costs no Google quota. Every
+// everywhere; this only fills what Google left blank: the barcode lookup and
+// typed search when Google fails or misses (app/api/search), and description /
+// subjects / cover in enrichBook (convex/enrich.ts). Keyless, so it costs no Google quota. Every
 // helper is fault-tolerant — null on a miss or any failure, never throws.
 // Self-contained (imports only from convex/) like googleBooks.ts, so both the
 // Convex bundle and the Next.js API route can import it.
@@ -60,6 +60,50 @@ export const fetchOpenLibraryByIsbn = async (isbn: string): Promise<OpenLibraryH
     }
   } catch (err) {
     console.error("Open Library ISBN lookup failed:", err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+type SearchApiDoc = {
+  title?: string
+  author_name?: string[]
+  isbn?: string[]
+  cover_i?: number
+  first_publish_year?: number
+  number_of_pages_median?: number
+}
+
+/** Typed-search fallback when Google errors or returns nothing that matches.
+ *  `[]` when Open Library has no match, null when it couldn't be reached. */
+export const searchOpenLibrary = async (
+  query: string,
+): Promise<Array<Omit<OpenLibraryHit, "isbn"> & { isbn?: string }> | null> => {
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      fields: "title,author_name,isbn,cover_i,first_publish_year,number_of_pages_median",
+      limit: "10",
+    })
+    const json = (await getJson(`${OL}/search.json?${params}`)) as { docs?: SearchApiDoc[] } | null
+    if (!json) return null
+    return (json.docs ?? [])
+      .filter((d): d is SearchApiDoc & { title: string } => Boolean(d.title))
+      .map((d) => {
+        // A work lists every edition's ISBN; any ISBN-13 is a real edition of it.
+        const isbn = d.isbn?.find((i) => i.length === 13) ?? d.isbn?.[0]
+        return {
+          title: d.title,
+          authors: d.author_name ?? [],
+          isbn,
+          coverUrlFallback:
+            coverUrl(d.cover_i) ??
+            (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false` : undefined),
+          firstPublishYear: d.first_publish_year,
+          pageCount: d.number_of_pages_median && d.number_of_pages_median > 0 ? d.number_of_pages_median : undefined,
+        }
+      })
+  } catch (err) {
+    console.error("Open Library search failed:", err instanceof Error ? err.message : err)
     return null
   }
 }
