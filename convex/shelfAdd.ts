@@ -8,7 +8,7 @@ import { enrichBook } from "./enrich"
 import { embedBookWithRetry } from "./embed"
 import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
 import { embeddingFor, hasEmbedding, saveEmbedding } from "./bookEmbeddings"
-import { rollTasteVector } from "./tasteVector"
+import { countTowardTaste } from "./tasteVector"
 import { assertMaxLength, LOAN_PERIOD_MS, TEXT_LIMITS } from "./util"
 
 // The ONE write path for putting a book on someone's shelf — used by the web
@@ -409,5 +409,5 @@ export const rollTasteOnStart = async (
   const now = next === "read" || next === "reading"
   if (was || !now) return
   const vec = await embeddingFor(ctx, book._id)
-  if (vec) await rollTasteVector(ctx, book.userId, vec.embedding)
+  if (vec) await countTowardTaste(ctx, book, vec.embedding)
 }

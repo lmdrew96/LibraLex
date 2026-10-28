@@ -1,5 +1,6 @@
 import { internalMutation } from "./_generated/server"
 import type { MutationCtx } from "./_generated/server"
+import type { Doc } from "./_generated/dataModel"
 import { profileFor } from "./users"
 
 // Per-user taste vector: a running mean of embeddings for books the user has
@@ -29,11 +30,25 @@ export const rollTasteVector = async (
   await ctx.db.patch(profile._id, { tasteVector: nextMean, tasteVectorCount: nextN })
 }
 
+// Roll a book into its owner's taste vector at most once: stamps
+// books.tasteCountedAt, and skips a book that already has it.
+export const countTowardTaste = async (
+  ctx: MutationCtx,
+  book: Doc<"books">,
+  embedding: number[],
+): Promise<void> => {
+  if (book.tasteCountedAt) return
+  await rollTasteVector(ctx, book.userId, embedding)
+  await ctx.db.patch(book._id, { tasteCountedAt: Date.now() })
+}
+
 // One-off seed for existing data: recompute every user's taste vector from
 // scratch as a plain mean over their read/reading books that already carry an
 // embedding. Run once after the embedding backfill so the vector rec engine
 // has something to search with immediately, instead of waiting for future
-// rate/finish events to build it up one book at a time:
+// rate/finish events to build it up one book at a time. Also stamps
+// books.tasteCountedAt to match — re-run it to backfill that field and clear
+// drift from books counted twice before it existed:
 //   npx convex run tasteVector:seedAllTasteVectors
 export const seedAllTasteVectors = internalMutation({
   args: {},
@@ -46,15 +61,28 @@ export const seedAllTasteVectors = internalMutation({
         .withIndex("by_user", (q) => q.eq("userId", user.userId))
         .collect()
       const sources: number[][] = []
+      const now = Date.now()
       for (const b of books) {
-        if (b.readStatus !== "read" && b.readStatus !== "reading") continue
-        const vec = await ctx.db
-          .query("bookEmbeddings")
-          .withIndex("by_book", (q) => q.eq("bookId", b._id))
-          .unique()
-        if (vec?.embedding.length) sources.push(vec.embedding)
+        const vec =
+          b.readStatus === "read" || b.readStatus === "reading"
+            ? await ctx.db
+                .query("bookEmbeddings")
+                .withIndex("by_book", (q) => q.eq("bookId", b._id))
+                .unique()
+            : null
+        // tasteCountedAt mirrors exactly what went into this mean, so later
+        // status toggles can't count a book twice.
+        if (vec?.embedding.length) {
+          sources.push(vec.embedding)
+          if (!b.tasteCountedAt) await ctx.db.patch(b._id, { tasteCountedAt: now })
+        } else if (b.tasteCountedAt) {
+          await ctx.db.patch(b._id, { tasteCountedAt: undefined })
+        }
       }
-      if (sources.length === 0) continue
+      if (sources.length === 0) {
+        if (user.tasteVector) await ctx.db.patch(user._id, { tasteVector: undefined, tasteVectorCount: undefined })
+        continue
+      }
 
       const dims = sources[0].length
       const mean = new Array(dims).fill(0)

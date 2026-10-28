@@ -1,6 +1,6 @@
 import type { Doc, Id } from "./_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
-import { rollTasteVector } from "./tasteVector"
+import { countTowardTaste } from "./tasteVector"
 
 // Book vectors live in their own table (see schema.ts `bookEmbeddings`). Every
 // read/write of a book's embedding goes through these helpers.
@@ -35,7 +35,7 @@ export const saveEmbedding = async (
   }
   await ctx.db.insert("bookEmbeddings", { bookId: book._id, userId: book.userId, embedding })
   if (book.readStatus === "read" || book.readStatus === "reading") {
-    await rollTasteVector(ctx, book.userId, embedding)
+    await countTowardTaste(ctx, book, embedding)
   }
 }
 

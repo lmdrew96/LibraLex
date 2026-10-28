@@ -64,6 +64,9 @@ export default defineSchema({
     review: v.optional(v.string()),
     startedAt: v.optional(v.number()),
     finishedAt: v.optional(v.number()),
+    // When this book's embedding was rolled into the owner's taste vector — set
+    // once, so toggling reading → unread → reading doesn't count it again.
+    tasteCountedAt: v.optional(v.number()),
 
     // ── library loan fields (only meaningful when ownership === "library") ────
     checkoutDate: v.optional(v.number()),
