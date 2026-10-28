@@ -49,10 +49,12 @@ export function useBookSearch(): {
         const res = await fetch(`/api/search?q=${encodeURIComponent(submitted)}`, {
           signal: ctrl.signal,
         })
-        const data = (await res.json()) as { results?: BookSearchResult[]; error?: string }
+        // A platform timeout (Vercel's own 504) has no JSON body — that's still
+        // "search is down", not "check your connection".
+        const data = (await res.json().catch(() => ({}))) as { results?: BookSearchResult[]; error?: string }
         if (!res.ok) {
           setResults([])
-          setError(data.error ?? "Search is unavailable right now.")
+          setError(data.error ?? "Search is unavailable right now. Try again.")
         } else {
           setResults(data.results ?? [])
           setError(null)

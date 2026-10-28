@@ -90,42 +90,32 @@ const fetchSubjectOnce = async (subject: string, page: number): Promise<Discover
     .map(toCandidate)
 }
 
-// Pages already folded into discoverCache's precomputed pool (mirrors PAGES in
-// convex/discoverCache.ts) — a precomputed subject's live-Google backfill
-// continues from here instead of re-fetching (and discarding as duplicates)
-// pages already cached.
-const PRECOMPUTED_PAGES = 3
-
 const fetchSubject = async (subject: string, page: number): Promise<DiscoveryCandidate[]> => {
   // 1. Precomputed Convex pool (daily cron) — the fast, reliable path for genre
-  //    subjects. Page 0 ships the whole precomputed pool instantly. Deeper pages
-  //    (the carousel backfilling after shelf/dismiss exclusions thin the row
-  //    below its buffer target) fall through to live Google below, continuing
-  //    past the pages the precompute already covered.
-  //    try/catch so an unreachable / not-yet-deployed Convex just falls through.
-  let livePage = page
+  //    subjects. Page 0 ships the whole precomputed pool instantly; deeper pages
+  //    are empty (see below). try/catch so an unreachable / not-yet-deployed
+  //    Convex just falls through.
   if (convexClient) {
     try {
       const precomputed = await convexClient.query(api.discoverCache.getBySubject, { subject })
-      if (precomputed.length > 0) {
-        if (page === 0) return precomputed
-        livePage = PRECOMPUTED_PAGES + (page - 1)
-      }
+      // Deeper pages of a precomputed subject return nothing rather than going
+      // live: the genre rows on /search paginate whenever shelf/dismiss/cross-row
+      // exclusions thin them, and those per-visit live calls were draining the
+      // Google quota that typed search needs. A shorter row beats a failed search.
+      if (precomputed.length > 0) return page === 0 ? precomputed : []
     } catch {
       // Convex unreachable or function not deployed yet — fall through to live Google.
     }
   }
 
   // 2. Module cache + live Google Books (the fallback for not-yet-precomputed
-  //    subjects, e.g. per-user taste subjects, and until the cron first runs —
-  //    plus deep backfill pages for precomputed genre subjects once their row
-  //    runs low).
-  const cacheKey = `${subject.trim().toLowerCase()}@${livePage}`
+  //    subjects, e.g. per-user taste subjects, and until the cron first runs).
+  const cacheKey = `${subject.trim().toLowerCase()}@${page}`
   const cached = subjectCache.get(cacheKey)
   if (cached && Date.now() - cached.at < SUBJECT_CACHE_TTL_MS) return cached.candidates
 
   try {
-    const candidates = await fetchSubjectOnce(subject, livePage)
+    const candidates = await fetchSubjectOnce(subject, page)
     // Only cache a healthy (non-empty) batch — caching an empty would serve it for
     // the whole TTL. An empty falls back to any prior good entry for this key.
     if (candidates.length > 0) {

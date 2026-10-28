@@ -21,6 +21,16 @@ const toSearchResult = (v: GoogleVolume): BookSearchResult => ({
 
 const ISBN_RE = /^(\d{9}[0-9Xx]|\d{13})$/
 
+// Why Google failed, labeled for the logs: a 429 is the daily quota, a 5xx is
+// Google having trouble, an abort is our timeout.
+const describeFailure = (err: unknown): string => {
+  if (err instanceof Error && err.name === "AbortError") return "timeout"
+  const msg = err instanceof Error ? err.message : String(err)
+  const status = msg.match(/responded (\d{3})/)?.[1]
+  if (status === "429") return `quota/rate limit (429) — ${msg}`
+  return status ? `upstream ${status} — ${msg}` : msg
+}
+
 // Successful lookups are cached by the browser for a few minutes, so backspacing
 // or retyping a query doesn't spend another Google request. Private: the route
 // sits behind Clerk.
@@ -48,7 +58,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       })
       return NextResponse.json({ results: volumes.map(toSearchResult) }, { headers: CACHE_HEADERS })
     } catch (err) {
-      console.error("/api/search author lookup failed:", err instanceof Error ? err.message : err)
+      console.error("/api/search author lookup failed:", describeFailure(err))
       return NextResponse.json(
         { results: [], error: "Couldn't load this author's books. Try again." },
         { status: 504 },
@@ -75,7 +85,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     } catch (err) {
       googleFailed = true
-      console.error("/api/search ISBN lookup failed:", err instanceof Error ? err.message : err)
+      console.error("/api/search ISBN lookup failed:", describeFailure(err))
     }
     const fromOpenLibrary = await fetchOpenLibraryByIsbn(isbn)
     if (fromOpenLibrary) {
@@ -98,7 +108,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const volumes = await fetchVolumesByQuery(query, { maxResults: 10, langRestrict: "en" })
     return NextResponse.json({ results: volumes.map(toSearchResult) }, { headers: CACHE_HEADERS })
   } catch (err) {
-    console.error("/api/search text search failed:", err instanceof Error ? err.message : err)
+    console.error("/api/search text search failed:", describeFailure(err))
     return NextResponse.json(
       { results: [], error: "Search is unavailable right now. Try again." },
       { status: 504 },
