@@ -3,7 +3,7 @@
 import { use, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { useAction, useMutation, useQuery } from "convex/react"
+import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { ArrowLeft, ImagePlus, Loader2, RefreshCw, Share2, Star, Trash2 } from "lucide-react"
@@ -38,7 +38,10 @@ const dueColor: Record<string, string> = {
 
 export default function BookDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const book = useQuery(api.books.getBook, { id: id as Id<"books"> })
+  // Skip until Convex has the Clerk token: unauthenticated, getBook returns null,
+  // which would flash "This book isn't here anymore" before the real page.
+  const { isAuthenticated } = useConvexAuth()
+  const book = useQuery(api.books.getBook, isAuthenticated ? { id: id as Id<"books"> } : "skip")
   // Whole library for the "More like this" nearest-neighbour comparison.
   const allBooks = useQuery(api.books.listBooks, {})
   // Anonymous cross-user average for this title — keyed by the same identity the
