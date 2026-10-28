@@ -316,7 +316,7 @@ export const refetchMetadata = action({
     const snapshot = (b: typeof book | null): string =>
       JSON.stringify(
         b && [
-          b.authors, b.coverUrlFallback, b.workKey, b.firstPublishYear, b.pageCount, b.description,
+          b.authors, b.isbn, b.coverUrlFallback, b.workKey, b.firstPublishYear, b.pageCount, b.description,
           b.categories, b.subjects, b.averageRating, b.ratingsCount, b.hasEmbedding,
         ],
       )

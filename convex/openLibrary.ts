@@ -89,8 +89,7 @@ export const searchOpenLibrary = async (
     return (json.docs ?? [])
       .filter((d): d is SearchApiDoc & { title: string } => Boolean(d.title))
       .map((d) => {
-        // A work lists every edition's ISBN; any ISBN-13 is a real edition of it.
-        const isbn = d.isbn?.find((i) => i.length === 13) ?? d.isbn?.[0]
+        const isbn = pickIsbn(d.isbn)
         return {
           title: d.title,
           authors: d.author_name ?? [],
@@ -99,7 +98,7 @@ export const searchOpenLibrary = async (
             coverUrl(d.cover_i) ??
             (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false` : undefined),
           firstPublishYear: d.first_publish_year,
-          pageCount: d.number_of_pages_median && d.number_of_pages_median > 0 ? d.number_of_pages_median : undefined,
+          pageCount: positive(d.number_of_pages_median),
         }
       })
   } catch (err) {
@@ -113,6 +112,9 @@ export type OpenLibraryDetails = {
   description?: string
   subjects?: string[]
   coverUrlFallback?: string
+  isbn?: string
+  firstPublishYear?: number
+  pageCount?: number
 }
 
 // Description comes as a plain string or { type, value }. Open Library appends
@@ -138,7 +140,14 @@ const cleanDescription = (raw: unknown): string | undefined => {
 }
 
 type Work = { description?: unknown; subjects?: string[]; covers?: number[] }
-type Edition = { description?: unknown; subjects?: string[]; covers?: number[]; works?: Array<{ key?: string }> }
+type Edition = {
+  description?: unknown
+  subjects?: string[]
+  covers?: number[]
+  works?: Array<{ key?: string }>
+  number_of_pages?: number
+  publish_date?: string
+}
 
 const fromWork = async (workKey: string | undefined): Promise<Work | null> =>
   workKey ? ((await getJson(`${OL}${workKey}.json`)) as Work | null) : null
@@ -147,7 +156,20 @@ const fromWork = async (workKey: string | undefined): Promise<Work | null> =>
 // "… (Tome 1)", "… #4". Captures the volume number.
 const VOLUME_SUFFIX = /[\s,:\-–—(]+(?:book|vol\.?|volume|tome|t|part|no\.?|#)\s*(\d+)\)?\s*$/i
 
-type SearchDoc = { key?: string; title?: string; author_name?: string[]; cover_i?: number }
+type SearchDoc = {
+  key?: string
+  title?: string
+  author_name?: string[]
+  cover_i?: number
+  isbn?: string[]
+  first_publish_year?: number
+  number_of_pages_median?: number
+}
+
+// A work lists every edition's ISBN; any ISBN-13 is a real edition of it.
+const pickIsbn = (isbns: string[] | undefined): string | undefined =>
+  isbns?.find((i) => i.length === 13) ?? isbns?.[0]
+const positive = (n: number | undefined): number | undefined => (n && n > 0 ? n : undefined)
 
 /** The search doc that is the wanted book: an exact title match, else the
  *  earliest volume of a series whose base title matches ("Stand Still Stay
@@ -183,6 +205,7 @@ export const fetchOpenLibraryDetails = async (book: {
     let edition: Edition | null = null
     let workKey: string | undefined
     let coverId: number | undefined
+    let match: SearchDoc | undefined
 
     if (book.isbn) {
       edition = (await getJson(`${OL}/isbn/${book.isbn}.json`)) as Edition | null
@@ -194,7 +217,7 @@ export const fetchOpenLibraryDetails = async (book: {
     if (!edition && book.author) {
       const params = new URLSearchParams({
         title: book.title,
-        fields: "key,title,author_name,cover_i",
+        fields: "key,title,author_name,cover_i,isbn,first_publish_year,number_of_pages_median",
         limit: "5",
       })
       params.set("author", book.author)
@@ -202,7 +225,7 @@ export const fetchOpenLibraryDetails = async (book: {
       // Strict same-book check (title equal up to a volume suffix, first authors
       // agree) — a loose title match would attach another book's description
       // ("Diana" vs "Diana: Her True Story").
-      const match = pickOpenLibraryMatch({ title: book.title, authors: [book.author] }, found?.docs ?? [])
+      match = pickOpenLibraryMatch({ title: book.title, authors: [book.author] }, found?.docs ?? [])
       if (!match) return null
       workKey = match.key
       coverId = match.cover_i
@@ -222,8 +245,12 @@ export const fetchOpenLibraryDetails = async (book: {
       subjects: subjects?.length ? subjects : undefined,
       // Sparse editions often lack a cover their work has.
       coverUrlFallback: coverUrl(coverId) ?? coverUrl(work?.covers?.find((c) => c > 0)),
+      // Bibliographic blanks: the scanned edition's, else the matched work's.
+      isbn: book.isbn ? undefined : pickIsbn(match?.isbn),
+      firstPublishYear: match?.first_publish_year ?? positive(Number(edition?.publish_date?.match(/\d{4}/)?.[0])),
+      pageCount: positive(edition?.number_of_pages) ?? positive(match?.number_of_pages_median),
     }
-    return details.description || details.subjects || details.coverUrlFallback ? details : null
+    return Object.values(details).some((v) => v !== undefined) ? details : null
   } catch (err) {
     console.error("Open Library details lookup failed:", err instanceof Error ? err.message : err)
     return null

@@ -203,6 +203,7 @@ export const _applyServerEnrichment = internalMutation({
   args: {
     id: v.id("books"),
     authors: v.array(v.string()),
+    isbn: v.optional(v.string()),
     coverUrlFallback: v.optional(v.string()),
     workKey: v.optional(v.string()),
     firstPublishYear: v.optional(v.number()),
@@ -219,6 +220,7 @@ export const _applyServerEnrichment = internalMutation({
     if (!book) return // deleted while enrichment was in flight
     await ctx.db.patch(args.id, {
       authors: book.authors.length ? book.authors : normalizeAuthors(args.authors),
+      isbn: book.isbn ?? args.isbn,
       coverUrlFallback: args.coverUrlFallback ?? book.coverUrlFallback,
       workKey: book.workKey ?? args.workKey,
       firstPublishYear: book.firstPublishYear ?? sanitizeYear(args.firstPublishYear),
@@ -270,6 +272,7 @@ export const enrichBookById = internalAction({
     await ctx.runMutation(internal.shelfAdd._applyServerEnrichment, {
       id,
       authors: enriched?.authors ?? book.authors,
+      isbn: enriched?.isbn,
       coverUrlFallback: enriched?.coverUrlFallback,
       workKey: enriched?.workKey,
       firstPublishYear: enriched?.firstPublishYear,

@@ -87,8 +87,15 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
   // Open Library fills only what Google left blank (small-press, comics and new
   // releases are where Google's data is thinnest). Its subjects go to `subjects`
   // only — `categories` stays Google's BISAC tags, which the comic guard reads.
+  const year = firstOf(gb?.year, candidate.firstPublishYear)
+  const pageCount = firstOf(gb?.pageCount, candidate.pageCount)
   const ol =
-    !description || (!categories?.length && !candidate.subjects?.length) || !googleCover
+    !description ||
+    (!categories?.length && !candidate.subjects?.length) ||
+    !googleCover ||
+    !isbn ||
+    !year ||
+    !pageCount
       ? await fetchOpenLibraryDetails({ isbn, title: candidate.title, author: candidate.authors[0] })
       : null
   const subjects = categories?.length
@@ -102,11 +109,11 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
   return {
     title: candidate.title,
     authors,
-    isbn,
+    isbn: isbn ?? ol?.isbn,
     coverUrlFallback: googleCover ?? ol?.coverUrlFallback,
     workKey: firstOf(candidate.workKey, gb?.id),
-    firstPublishYear: sanitizeYear(firstOf(gb?.year, candidate.firstPublishYear)),
-    pageCount: firstOf(gb?.pageCount, candidate.pageCount),
+    firstPublishYear: sanitizeYear(firstOf(year, ol?.firstPublishYear)),
+    pageCount: firstOf(pageCount, ol?.pageCount),
     description: description ?? ol?.description,
     categories: categories?.length ? categories : candidate.categories,
     subjects: subjects?.length ? subjects : undefined,
