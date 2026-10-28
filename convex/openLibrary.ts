@@ -99,6 +99,35 @@ type Edition = { description?: unknown; subjects?: string[]; covers?: number[]; 
 const fromWork = async (workKey: string | undefined): Promise<Work | null> =>
   workKey ? ((await getJson(`${OL}${workKey}.json`)) as Work | null) : null
 
+// Trailing volume marker on a series entry: "…, Book 1", "… Vol. 2", "… T3",
+// "… (Tome 1)", "… #4". Captures the volume number.
+const VOLUME_SUFFIX = /[\s,:\-–—(]+(?:book|vol\.?|volume|tome|t|part|no\.?|#)\s*(\d+)\)?\s*$/i
+
+type SearchDoc = { key?: string; title?: string; author_name?: string[]; cover_i?: number }
+
+/** The search doc that is the wanted book: an exact title match, else the
+ *  earliest volume of a series whose base title matches ("Stand Still Stay
+ *  Silent" → "Stand Still - Stay Silent, Book 1", not "… T3"). First authors
+ *  must agree either way. */
+export const pickOpenLibraryMatch = (
+  want: { title: string; authors: string[] },
+  docs: SearchDoc[],
+): SearchDoc | undefined => {
+  let best: { doc: SearchDoc; volume: number } | undefined
+  for (const d of docs) {
+    if (!d.key || !d.title) continue
+    const authors = d.author_name ?? []
+    const volMatch = d.title.match(VOLUME_SUFFIX)
+    const volume = isSameBook(want, { title: d.title, authors })
+      ? 0
+      : volMatch && isSameBook(want, { title: d.title.slice(0, volMatch.index), authors })
+        ? Number(volMatch[1])
+        : undefined
+    if (volume !== undefined && (!best || volume < best.volume)) best = { doc: d, volume }
+  }
+  return best?.doc
+}
+
 /** Description / subjects / cover for a book: by ISBN (edition, then its work),
  *  else by title + author search. Null when Open Library has nothing useful. */
 export const fetchOpenLibraryDetails = async (book: {
@@ -125,16 +154,11 @@ export const fetchOpenLibraryDetails = async (book: {
         limit: "5",
       })
       params.set("author", book.author)
-      const found = (await getJson(`${OL}/search.json?${params}`)) as {
-        docs?: Array<{ key?: string; title?: string; author_name?: string[]; cover_i?: number }>
-      } | null
-      // Strict same-book check (title equal, first authors agree) — a loose title
-      // match would attach another book's description ("Diana" vs "Diana: Her
-      // True Story").
-      const want = { title: book.title, authors: [book.author] }
-      const match = (found?.docs ?? []).find(
-        (d) => d.key && d.title && isSameBook(want, { title: d.title, authors: d.author_name ?? [] }),
-      )
+      const found = (await getJson(`${OL}/search.json?${params}`)) as { docs?: SearchDoc[] } | null
+      // Strict same-book check (title equal up to a volume suffix, first authors
+      // agree) — a loose title match would attach another book's description
+      // ("Diana" vs "Diana: Her True Story").
+      const match = pickOpenLibraryMatch({ title: book.title, authors: [book.author] }, found?.docs ?? [])
       if (!match) return null
       workKey = match.key
       coverId = match.cover_i
