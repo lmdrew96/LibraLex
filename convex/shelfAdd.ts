@@ -259,7 +259,12 @@ export const enrichBookById = internalAction({
     }).catch(() => null)
     const description = enriched?.description ?? book.description
     const subjects = enriched?.subjects ?? book.subjects
-    const embedding = book.hasEmbedding
+    // Description is the dominant embedding input (convex/embed.ts), so a book
+    // embedded before its description arrived (Open Library fallback, the monthly
+    // retry, a re-fetch) is re-embedded once it has one. The taste vector keeps
+    // the old vector's contribution — it never retracts (convex/tasteVector.ts).
+    const descriptionArrived = !book.description && Boolean(description)
+    const embedding = book.hasEmbedding && !descriptionArrived
       ? undefined
       : ((await embedBookWithRetry({
           title: book.title,
