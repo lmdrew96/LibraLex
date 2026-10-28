@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "convex/react"
 import { Compass } from "lucide-react"
 import { api } from "@/convex/_generated/api"
@@ -50,11 +50,17 @@ export function DiscoverPicks({
   // Eager: start after the page is idle. Lazy: start when scrolled near. Until
   // then there are no subjects, so useDiscover makes no request.
   const active = eager ? idle : inView
-  const subjects = active
+  const computed = active
     ? target
       ? (target.subjects ?? []).slice(0, 4)
       : topTasteSubjects(library, 4, true)
     : []
+  // Lock the subjects once per target: the taste ranking shifts with every shelf
+  // change, and a new subject set makes useDiscover blank the row and refetch.
+  const lockFor = target?._id ?? ""
+  const [locked, setLocked] = useState<{ for: string; subjects: string[] } | null>(null)
+  if (computed.length > 0 && locked?.for !== lockFor) setLocked({ for: lockFor, subjects: computed })
+  const subjects = locked?.for === lockFor ? locked.subjects : computed
   const { results, loading, loadMore, exhausted } = useDiscover(subjects)
   // Shared with FriendPicks' subscription (Convex dedupes identical queries), so
   // this is free — we read it only to exclude books already shown as friend picks.
