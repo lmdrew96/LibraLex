@@ -6,8 +6,8 @@ import Link from "next/link"
 import { Compass, SlidersHorizontal } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import { DEFAULT_GENRE_IDS, genreById, type Genre } from "@/lib/genres"
-import { bookKey } from "@/lib/book-key"
-import { collapseEditions, editionKey } from "@/lib/collapse-editions"
+import { bookKeys, inKeySet, keySetOf } from "@/lib/book-key"
+import { collapseEditions } from "@/lib/collapse-editions"
 import { useDiscover } from "@/lib/use-discover"
 import { OffShelfPick } from "@/components/off-shelf-pick"
 import { PickShelf } from "@/components/pick-shelf"
@@ -98,10 +98,8 @@ export function GenreBrowse() {
     .map(genreById)
     .filter((g): g is Genre => Boolean(g))
 
-  const excluded = new Set<string>([
-    ...(library ?? []).map(bookKey),
-    ...(dismissed ?? []),
-  ])
+  // Every identity of every shelf book (so other editions hide too) + dismissals.
+  const excluded = new Set<string>([...keySetOf(library ?? []), ...(dismissed ?? [])])
 
   return (
     <div>
@@ -164,10 +162,11 @@ function GenreRow({
   // collapsed (within-row dedup — reuses the shared utility). Independent of other
   // rows, so it's a stable basis for the cross-row claim.
   const pool = useMemo(
-    () => collapseEditions(results.filter((r) => !excluded.has(bookKey(r)))),
+    () => collapseEditions(results.filter((r) => !inKeySet(excluded, r))),
     [results, excluded],
   )
-  const poolKeys = useMemo(() => pool.map(editionKey), [pool])
+  // Every identity key in the pool, so another edition in a later row is caught too.
+  const poolKeys = useMemo(() => pool.flatMap(bookKeys), [pool])
 
   // Report this row's claim whenever its pool changes. Joined into a primitive so the
   // effect only fires on a real change, not on array identity.
@@ -182,7 +181,9 @@ function GenreRow({
   // nothing flashes empty on first paint). Held as a buffer deeper than the row so an
   // added/declined pick is replaced instantly from the surplus rather than the row
   // shrinking.
-  const owned = pool.filter((p) => (ownerByKey.get(editionKey(p)) ?? index) === index)
+  const owned = pool.filter(
+    (p) => Math.min(index, ...bookKeys(p).map((k) => ownerByKey.get(k) ?? index)) === index,
+  )
 
   // Per-visit window into the owned buffer. The start is a FIXED offset (not a
   // length-dependent cyclic shift), so declining a pick just slides the next one in

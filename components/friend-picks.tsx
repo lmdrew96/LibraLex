@@ -7,7 +7,7 @@ import { api } from "@/convex/_generated/api"
 import type { ScoredFriendCandidate } from "@/convex/discover"
 import type { BookWithCover } from "@/lib/types"
 import { moreLikeThisFromPool } from "@/lib/recommend"
-import { bookKey } from "@/lib/book-key"
+import { inKeySet, keySetOf } from "@/lib/book-key"
 import { friendBoost, explainEndorsement } from "@/lib/friend-endorsement"
 import { OffShelfPick } from "@/components/off-shelf-pick"
 import { PickShelf } from "@/components/pick-shelf"
@@ -64,7 +64,7 @@ export function FriendPicks({
 
   if (target) {
     if (!candidates || candidates.length === 0) return null
-    const visible = candidates.filter((c) => !dismissedSet.has(bookKey(c)))
+    const visible = candidates.filter((c) => !inKeySet(dismissedSet, c))
     if (visible.length === 0) return null
     const ranked = moreLikeThisFromPool(target, library, visible)
       .map((p) => ({ ...p, score: p.score * friendBoost(p.book.endorsers) }))
@@ -86,8 +86,8 @@ export function FriendPicks({
     if (!vectorPicks || vectorPicks.length === 0) return null
     // The vector picks are a one-shot fetch, not a live query, so a book added from
     // this row (or anywhere) must be filtered out against the live library here.
-    const mine = new Set(library.map(bookKey))
-    const visible = vectorPicks.filter((c) => !dismissedSet.has(bookKey(c)) && !mine.has(bookKey(c)))
+    const mine = keySetOf(library)
+    const visible = vectorPicks.filter((c) => !inKeySet(dismissedSet, c) && !inKeySet(mine, c))
     if (visible.length === 0) return null
     const ranked = visible
       .map((c) => ({ ...c, boosted: c.score * friendBoost(c.endorsers) }))

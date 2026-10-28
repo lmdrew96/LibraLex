@@ -1,4 +1,5 @@
 import { action, internalQuery, mutation, query } from "./_generated/server"
+import { bookKey, inKeySet, keySetOf } from "./bookIdentity"
 import type { QueryCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { v } from "convex/values"
@@ -37,29 +38,11 @@ export type FriendCandidate = {
   endorsers: FriendEndorsement[]
 }
 
-// Stable identity for a book across shelves: prefer the work key (a Google Books
-// volume id), then a normalized ISBN, then title+first-author. Two friends owning
-// "the same book" collapse to one candidate; a book already on your shelf is
-// excluded by key.
-// Works on any record carrying these bibliographic fields — a stored Doc OR an
-// inbound add payload — so the MCP add path can resolve an existing copy by the
-// SAME identity it dedupes recommendations against (convex/mcpData.ts).
-export const identityKey = (b: {
-  workKey?: string
-  isbn?: string
-  title: string
-  authors: string[]
-}): string => {
-  const work = b.workKey?.trim()
-  if (work) return `w:${work}`
-  const isbn = b.isbn?.replace(/[^0-9Xx]/g, "").toLowerCase()
-  if (isbn) return `i:${isbn}`
-  return `t:${b.title.trim().toLowerCase()}|${(b.authors[0] ?? "").trim().toLowerCase()}`
-}
-
-// The same identity, specialized to a stored book row. Kept as a named export
-// because the recommenders read it all over (here + mcpData).
-export const dedupeKey = (b: Doc<"books">): string => identityKey(b)
+// A stored book's primary identity (convex/bookIdentity.ts) — the key two
+// friends' copies of one book merge under. "Already on my shelf" checks use the
+// full key set (keySetOf / inKeySet) so other editions count too. Kept as a named
+// export because the recommenders read it all over (here + mcpData).
+export const dedupeKey = (b: Doc<"books">): string => bookKey(b)
 
 // A book a friend has actually engaged with is a real recommendation; a book
 // still sitting unread+unrated on their wishlist is not (it's their to-read, not
@@ -188,7 +171,7 @@ export const friendCandidates = query({
       .query("books")
       .withIndex("by_user", (q) => q.eq("userId", me))
       .collect()
-    const mineKeys = new Set(mine.map(dedupeKey))
+    const mineKeys = keySetOf(mine)
 
     // Walk each friend's shelf, merging duplicate works across friends into one
     // candidate that accrues every endorser.
@@ -206,8 +189,8 @@ export const friendCandidates = query({
       for (const b of books) {
         if (hidden.has(b.ownership)) continue // owner keeps this shelf private
         if (!isVouchworthy(b)) continue
+        if (inKeySet(mineKeys, b)) continue
         const key = dedupeKey(b)
-        if (mineKeys.has(key)) continue
 
         mergeCandidate(byKey, key, b, {
           ...endorser,
@@ -265,7 +248,7 @@ export const _assembleVectorCandidates = internalQuery({
       .query("books")
       .withIndex("by_user", (q) => q.eq("userId", me))
       .collect()
-    const mineKeys = new Set(mine.map(dedupeKey))
+    const mineKeys = keySetOf(mine)
 
     const byKey = new Map<string, CandidateAccumulator>()
     const scoreByKey = new Map<string, number>()
@@ -286,8 +269,8 @@ export const _assembleVectorCandidates = internalQuery({
       if (!ownerProfile) continue
       if (hiddenShelfSet(ownerProfile).has(b.ownership)) continue // owner keeps this shelf private
 
+      if (inKeySet(mineKeys, b)) continue
       const key = dedupeKey(b)
-      if (mineKeys.has(key)) continue
 
       mergeCandidate(byKey, key, b, {
         ...toPublicProfile(ownerProfile),

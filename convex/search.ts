@@ -1,4 +1,5 @@
 import { action, internalQuery } from "./_generated/server"
+import { bookKey } from "./bookIdentity"
 import { v } from "convex/values"
 import { internal } from "./_generated/api"
 import { embedText } from "./gemini"
@@ -58,7 +59,7 @@ export const searchBooksByQuery = action({
 
     return docs
       .map((d) => ({
-        dedupeKey: `w:${d.workKey}`,
+        dedupeKey: bookKey(d),
         workKey: d.workKey,
         title: d.title,
         authors: d.authors,

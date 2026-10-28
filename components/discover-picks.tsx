@@ -6,7 +6,7 @@ import { Compass } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { BookWithCover } from "@/lib/types"
 import { moreLikeThisFromPool, recommendFromPool, topTasteSubjects } from "@/lib/recommend"
-import { bookKey } from "@/lib/book-key"
+import { inKeySet, keySetOf } from "@/lib/book-key"
 import { useDiscover } from "@/lib/use-discover"
 import { useIdle } from "@/lib/use-idle"
 import { useInView } from "@/lib/use-in-view"
@@ -70,11 +70,11 @@ export function DiscoverPicks({
   const dismissed = useQuery(api.discover.dismissedKeys)
 
   const excluded = new Set<string>([
-    ...library.map(bookKey),
-    ...(friendCandidates ?? []).map(bookKey),
+    ...keySetOf(library),
+    ...keySetOf(friendCandidates ?? []),
     ...(dismissed ?? []),
   ])
-  const pool = results.filter((r) => !excluded.has(bookKey(r)))
+  const pool = results.filter((r) => !inKeySet(excluded, r))
   const limit = layout === "carousel" ? 12 : 10
   const ranked = (
     target ? moreLikeThisFromPool(target, library, pool) : recommendFromPool(library, pool)

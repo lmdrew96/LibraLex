@@ -1,4 +1,5 @@
 import { httpRouter } from "convex/server"
+import { bookKeys, inKeySet } from "./bookIdentity"
 import { httpAction } from "./_generated/server"
 import { internal } from "./_generated/api"
 import type { ActionCtx } from "./_generated/server"
@@ -414,16 +415,6 @@ async function googleSearch(
   }
 }
 
-/** Cross-shelf identity for a catalog hit — MUST match discover.dedupeKey so we
- *  can filter against the user's shelf + dismissed keys. */
-const catalogKey = (c: CatalogResult): string => {
-  const work = c.workKey?.trim()
-  if (work) return `w:${work}`
-  const isbn = c.isbn?.replace(/[^0-9Xx]/g, "").toLowerCase()
-  if (isbn) return `i:${isbn}`
-  return `t:${c.title.trim().toLowerCase()}|${(c.authors[0] ?? "").trim().toLowerCase()}`
-}
-
 // Catalog candidates for taste subjects — mirrors /api/discover (English,
 // 1980+ recency floor, applied post-fetch since Google's query syntax has no
 // date-range operator) so chat recs match the in-app Discover row.
@@ -447,9 +438,10 @@ async function catalogBySubjects(
       ) {
         continue
       }
-      const key = catalogKey(c)
-      if (seen.has(key)) continue
-      seen.add(key)
+      // Same-book rule (convex/bookIdentity.ts): skip anything sharing a key with
+      // the shelf, dismissals, friend picks, or a candidate already taken.
+      if (inKeySet(seen, c)) continue
+      for (const k of bookKeys(c)) seen.add(k)
       out.push(c)
       if (out.length >= need) break
     }

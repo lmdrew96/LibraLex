@@ -12,7 +12,7 @@ import {
 } from "./googleBooks"
 import { embedBookWithRetry } from "./embed"
 import { hasEmbedding, saveEmbedding } from "./bookEmbeddings"
-import { identityKey } from "./discover"
+import { bookKey } from "./bookIdentity"
 
 // One-off (re-runnable) enrich + normalize backfill for the existing shelf.
 // INTERNAL — not client-exposed; run from the CLI against whichever deployment
@@ -320,7 +320,7 @@ export const repairLegacyRows = internalAction({
     const keysByUser = new Map<string, Set<string>>()
     for (const b of rows) {
       const set = keysByUser.get(b.userId) ?? new Set<string>()
-      set.add(identityKey(b))
+      set.add(bookKey(b))
       keysByUser.set(b.userId, set)
     }
 

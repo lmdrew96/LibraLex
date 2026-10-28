@@ -7,7 +7,7 @@ import { Search, Sparkles } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { CatalogSearchResult } from "@/convex/search"
 import type { BookWithCover } from "@/lib/types"
-import { bookKey } from "@/lib/book-key"
+import { inKeySet, keySetOf } from "@/lib/book-key"
 import { OffShelfPick } from "@/components/off-shelf-pick"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -42,8 +42,8 @@ export function AskForABook({ library }: { library: BookWithCover[] }) {
     }
   }
 
-  const excluded = new Set<string>([...library.map(bookKey), ...(dismissed ?? [])])
-  const visible = results.filter((r) => !excluded.has(bookKey(r)))
+  const excluded = new Set<string>([...keySetOf(library), ...(dismissed ?? [])])
+  const visible = results.filter((r) => !inKeySet(excluded, r))
 
   return (
     <section>

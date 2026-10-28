@@ -3,7 +3,7 @@ import type { MutationCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
 import { v } from "convex/values"
 import type { Doc, Id } from "./_generated/dataModel"
-import { identityKey } from "./discover"
+import { bookKey, sameBook } from "./bookIdentity"
 import { enrichBook } from "./enrich"
 import { embedBookWithRetry } from "./embed"
 import { normalizeAuthors, normalizeSubjects, sanitizeYear } from "./normalize"
@@ -51,25 +51,14 @@ export type AddResult =
   | { status: "moved"; id: Id<"books">; title: string; from: Ownership; ownership: Ownership }
   | { status: "exists"; id: Id<"books">; title: string; ownership: Ownership }
 
-const norm = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, " ")
-
-// Same book already on any shelf? Identity first (workKey → isbn → title+author).
-// Google volume ids are edition-level, so a different edition misses on identity —
-// fall back to title + first author (or title alone when either side has no author).
+// Same book already on any shelf? The app-wide rule (convex/bookIdentity.ts),
+// preferring an exact primary-identity match when several rows qualify.
 export const findExistingCopy = (
   rows: Doc<"books">[],
   input: Pick<AddInput, "title" | "authors" | "isbn" | "workKey">,
 ): Doc<"books"> | undefined => {
-  const key = identityKey(input)
-  const byKey = rows.find((b) => identityKey(b) === key)
-  if (byKey) return byKey
-  const title = norm(input.title)
-  const author = input.authors[0] ? norm(input.authors[0]) : undefined
-  return rows.find((b) => {
-    if (norm(b.title) !== title) return false
-    const theirs = b.authors[0] ? norm(b.authors[0]) : undefined
-    return !author || !theirs || author === theirs
-  })
+  const key = bookKey(input)
+  return rows.find((b) => bookKey(b) === key) ?? rows.find((b) => sameBook(b, input))
 }
 
 export const addOrMoveBook = async (

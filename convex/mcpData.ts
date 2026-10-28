@@ -2,6 +2,7 @@ import { internalMutation, internalQuery } from "./_generated/server"
 import { ConvexError, v } from "convex/values"
 import type { Doc } from "./_generated/dataModel"
 import { normalizeAuthors, sanitizeYear } from "./normalize"
+import { inKeySet, keySetOf } from "./bookIdentity"
 import {
   dedupeKey,
   endorsementStrength,
@@ -613,7 +614,8 @@ export const recommendInputsForUser = internalQuery({
       .query("books")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect()
-    const onShelf = new Set(mine.map(dedupeKey))
+    // Every identity of every shelf book, so other editions count as on-shelf too.
+    const onShelf = keySetOf(mine)
 
     // Taste subjects — rating-weighted frequency over read/reading books PLUS
     // wishlisted books (an explicit "I want this" forward-looking signal, and the
@@ -655,8 +657,8 @@ export const recommendInputsForUser = internalQuery({
       for (const b of books) {
         if (hidden.has(b.ownership)) continue // owner keeps this shelf private
         if (!isVouchworthy(b)) continue
+        if (inKeySet(onShelf, b) || inKeySet(dismissedKeys, b)) continue
         const key = dedupeKey(b)
-        if (onShelf.has(key) || dismissedKeys.has(key)) continue
         const endorsement: RecEndorsement = {
           displayName,
           rating: b.rating,

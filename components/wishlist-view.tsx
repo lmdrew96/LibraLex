@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { Check, Heart, Trash2 } from "lucide-react"
 import { api } from "@/convex/_generated/api"
 import type { BookWithCover } from "@/lib/types"
-import { collapseEditions } from "@/lib/collapse-editions"
+import { groupEditions } from "@/lib/collapse-editions"
 import { AddBookDialog } from "@/components/add-book-dialog"
 import { BookCover } from "@/components/book-cover"
 import { BookGridSkeleton } from "@/components/book-grid"
@@ -19,17 +19,18 @@ import { useConfirm } from "@/components/ui/confirm-dialog"
 // tab until v0.50 folded it into Shelf to fit the nav on phones.
 export function WishlistView() {
   const books = useQuery(api.books.listBooks, { ownership: "wishlist" })
-  // Show each work once even if two editions were wishlisted (the rows stay in the DB;
-  // this only collapses the view). Keep `undefined` distinct so the skeleton still shows.
-  const deduped = books === undefined ? undefined : collapseEditions(books)
+  // Show each book once even if two editions were wishlisted; the card's actions
+  // apply to every copy in its group. Keep `undefined` distinct so the skeleton
+  // still shows.
+  const groups = books === undefined ? undefined : groupEditions(books)
 
   return (
     <>
       <p className="mb-5 text-teal">Books you want — one tap away from your shelf.</p>
 
-      {deduped === undefined ? (
+      {groups === undefined ? (
         <BookGridSkeleton count={6} />
-      ) : deduped.length === 0 ? (
+      ) : groups.length === 0 ? (
         <EmptyState
           icon={Heart}
           title="Nothing on the wishlist"
@@ -38,9 +39,9 @@ export function WishlistView() {
         />
       ) : (
         <ul className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {deduped.map((book) => (
-            <li key={book._id}>
-              <WishlistCard book={book} />
+          {groups.map((copies) => (
+            <li key={copies[0]._id}>
+              <WishlistCard copies={copies} />
             </li>
           ))}
         </ul>
@@ -49,7 +50,11 @@ export function WishlistView() {
   )
 }
 
-function WishlistCard({ book }: { book: BookWithCover }) {
+// `copies` is one book's wishlisted editions, best first. "I got this" promotes
+// the best one and drops the rest (so no duplicate lands on the shelf); Remove
+// drops them all — otherwise an old duplicate reappears.
+function WishlistCard({ copies }: { copies: BookWithCover[] }) {
+  const [book, ...extras] = copies
   const updateBook = useMutation(api.books.updateBook)
   const deleteBook = useMutation(api.books.deleteBook)
   const { confirm, confirmDialog } = useConfirm()
@@ -57,6 +62,7 @@ function WishlistCard({ book }: { book: BookWithCover }) {
   const promote = async () => {
     try {
       await updateBook({ id: book._id, patch: { ownership: "owned" } })
+      await Promise.all(extras.map((c) => deleteBook({ id: c._id })))
       toast.success(`“${book.title}” is on your shelf. Happy reading! 📚`)
     } catch {
       toast.error("Couldn't move it. Try again.")
@@ -74,7 +80,7 @@ function WishlistCard({ book }: { book: BookWithCover }) {
     )
       return
     try {
-      await deleteBook({ id: book._id })
+      await Promise.all(copies.map((c) => deleteBook({ id: c._id })))
       toast.success("Removed from wishlist.")
     } catch {
       toast.error("Couldn't remove it. Try again.")
