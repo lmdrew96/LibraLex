@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import { Search } from "lucide-react"
 import { useBookSearch } from "@/lib/use-book-search"
@@ -10,9 +9,8 @@ import { GenreBrowse } from "@/components/genre-browse"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function SearchPage() {
-  const [query, setQuery] = useState("")
-  const { results, searching, error } = useBookSearch(query)
-  const typed = query.trim().length >= 2
+  const { query, setQuery, submit, submitted, results, searching, error } = useBookSearch()
+  const typed = submitted.length >= 2
   const showNoMatches = typed && !searching && !error && results.length === 0
 
   return (
@@ -29,18 +27,32 @@ export default function SearchPage() {
         </p>
       </div>
 
-      <div className="relative mb-5">
+      <form
+        role="search"
+        className="relative mb-5"
+        onSubmit={(e) => {
+          e.preventDefault()
+          submit()
+        }}
+      >
         <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-teal" />
         <input
           autoFocus
-          type="text"
+          type="search"
+          enterKeyHint="search"
           aria-label="Search books by title or author"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by title or author…"
-          className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-4 text-base text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
+          placeholder="Title or author, then press Enter"
+          className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-24 text-base text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
         />
-      </div>
+        <button
+          type="submit"
+          className="absolute right-1.5 top-1/2 h-9 -translate-y-1/2 rounded-full bg-teal px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+        >
+          Search
+        </button>
+      </form>
 
       {searching && (
         <ul className="flex flex-col gap-2">

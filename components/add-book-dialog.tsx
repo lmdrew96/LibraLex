@@ -39,8 +39,7 @@ export function AddBookDialog({
   const [step, setStep] = useState<Step>("search")
 
   // search state — query is local; results/searching/error come from the shared hook
-  const [query, setQuery] = useState("")
-  const { results, searching, error: searchError } = useBookSearch(query)
+  const { query, setQuery, submit, submitted, results, searching, error: searchError } = useBookSearch()
 
   // selection + library checkout state
   const [selected, setSelected] = useState<BookSearchResult | null>(null)
@@ -220,6 +219,8 @@ export function AddBookDialog({
             <SearchStep
               query={query}
               setQuery={setQuery}
+              submit={submit}
+              submitted={submitted}
               results={results}
               searching={searching}
               searchError={searchError}
@@ -294,6 +295,8 @@ export function AddBookDialog({
 function SearchStep({
   query,
   setQuery,
+  submit,
+  submitted,
   results,
   searching,
   searchError,
@@ -303,6 +306,8 @@ function SearchStep({
 }: {
   query: string
   setQuery: (v: string) => void
+  submit: () => void
+  submitted: string
   results: BookSearchResult[]
   searching: boolean
   searchError: string | null
@@ -310,22 +315,36 @@ function SearchStep({
   onManual: () => void
   onScan: () => void
 }) {
-  const showEmpty = !searching && query.trim().length >= 2 && results.length === 0 && !searchError
+  const showEmpty = !searching && submitted.length >= 2 && results.length === 0 && !searchError
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+        <form
+          role="search"
+          className="relative flex-1"
+          onSubmit={(e) => {
+            e.preventDefault()
+            submit()
+          }}
+        >
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-teal" />
           <input
             autoFocus
-            type="text"
+            type="search"
+            enterKeyHint="search"
             aria-label="Search by title or author"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by title or author…"
-            className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-4 text-base text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
+            placeholder="Title or author, then Enter"
+            className="h-12 w-full rounded-full border border-lavender bg-card pl-12 pr-24 text-base text-ink placeholder:text-teal/90 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/30"
           />
-        </div>
+          <button
+            type="submit"
+            className="absolute right-1.5 top-1/2 h-9 -translate-y-1/2 rounded-full bg-teal px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal"
+          >
+            Search
+          </button>
+        </form>
         <button
           type="button"
           onClick={onScan}
