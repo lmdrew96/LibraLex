@@ -239,10 +239,10 @@ export const _applyServerEnrichment = internalMutation({
 // by addOrMoveBook for every new row; also run by the re-fetch action and the
 // embed-backfill cron. Best-effort: a failed lookup leaves the row as it was.
 export const enrichBookById = internalAction({
-  args: { id: v.id("books") },
-  handler: async (ctx, { id }): Promise<{ embedFailed: boolean }> => {
+  args: { id: v.id("books"), refresh: v.optional(v.boolean()) },
+  handler: async (ctx, { id, refresh }): Promise<{ embedFailed: boolean; matched: boolean }> => {
     const book = await ctx.runQuery(internal.shelfAdd._getBook, { id })
-    if (!book) return { embedFailed: false }
+    if (!book) return { embedFailed: false, matched: false }
     const enriched = await enrichBook({
       title: book.title,
       authors: book.authors,
@@ -256,7 +256,7 @@ export const enrichBookById = internalAction({
       description: book.description,
       categories: book.categories,
       subjects: book.subjects,
-    }).catch(() => null)
+    }, { refresh }).catch(() => null)
     const description = enriched?.description ?? book.description
     const subjects = enriched?.subjects ?? book.subjects
     // Description is the dominant embedding input (convex/embed.ts), so a book
@@ -273,7 +273,8 @@ export const enrichBookById = internalAction({
           subjects,
         })) ?? undefined)
     const embedFailed = !book.hasEmbedding && !embedding
-    if (!enriched && !embedding) return { embedFailed }
+    const matched = enriched?.matched ?? false
+    if (!enriched && !embedding) return { embedFailed, matched }
     await ctx.runMutation(internal.shelfAdd._applyServerEnrichment, {
       id,
       authors: enriched?.authors ?? book.authors,
@@ -289,7 +290,7 @@ export const enrichBookById = internalAction({
       ratingsCount: enriched?.ratingsCount,
       embedding,
     })
-    return { embedFailed }
+    return { embedFailed, matched }
   },
 })
 

@@ -79,9 +79,10 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     if (!book || refetching) return
     setRefetching(true)
     try {
-      const { updated } = await refetch({ id: book._id })
+      const { updated, matched } = await refetch({ id: book._id })
       if (updated) toast.success("Metadata refreshed.")
-      else toast("Nothing new found — the details are already up to date, or the catalog is unreachable right now.")
+      else if (matched) toast("Already up to date — the catalogs have nothing new for this book.")
+      else toast("Couldn't find this book in Google Books or Open Library (or they're unreachable right now).")
     } catch {
       toast.error("Couldn't refresh metadata.")
     } finally {

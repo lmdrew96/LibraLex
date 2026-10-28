@@ -51,7 +51,13 @@ const firstOf = <T>(...vals: (T | undefined)[]): T | undefined =>
  * Google Books ISBN lookup. Pure-degrades: with no ISBN it just normalizes and
  * returns the candidate, so manual adds still work.
  */
-export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook> => {
+// `refresh` is the book page's explicit Re-fetch: the matched volume's cover
+// replaces the stored one (so a wrong cover can be fixed). `matched` says whether
+// either catalog recognized the book at all, for the re-fetch toast.
+export const enrichBook = async (
+  candidate: EnrichedBook,
+  opts: { refresh?: boolean } = {},
+): Promise<EnrichedBook & { matched: boolean }> => {
   const isbn = candidate.isbn
   // ISBN-exact first; without an ISBN (or when it misses — a mismatched/unindexed
   // edition code), fall back to a title+author search. Without this, any book
@@ -78,8 +84,10 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
   // The matched volume can lack a cover — typically an ISBN for a foreign/niche
   // edition Google has without an image. Then look for the same title's cover
   // separately, so an ISBN hit never blocks a cover that a title search would find.
+  // Only the matched volume's own thumbnail may replace a stored cover — a loose
+  // title-search cover could be another book's.
   const googleCover =
-    firstOf(candidate.coverUrlFallback, gb?.thumbnail) ??
+    firstOf(opts.refresh ? gb?.thumbnail : undefined, candidate.coverUrlFallback, gb?.thumbnail) ??
     (await fetchCoverByTitle(candidate.title, candidate.authors[0]))
   // A saved value (passed in on re-fetch / retry) counts as already known.
   const description = gb?.description ?? descVolume?.description ?? candidate.description
@@ -119,5 +127,6 @@ export const enrichBook = async (candidate: EnrichedBook): Promise<EnrichedBook>
     subjects: subjects?.length ? subjects : undefined,
     averageRating: gb?.averageRating,
     ratingsCount: gb?.ratingsCount,
+    matched: Boolean(gb || descVolume || ol),
   }
 }

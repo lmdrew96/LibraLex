@@ -306,12 +306,14 @@ export const refetchMetadata = action({
   // `updated` says whether the record actually changed. Enrichment is
   // best-effort and falls back to the saved data when Google is unreachable, so
   // a before/after comparison is the only honest "refreshed" signal for the UI.
-  handler: async (ctx, args): Promise<{ updated: boolean }> => {
+  // `matched` tells "already up to date" apart from "no catalog found it" (the
+  // catalog clients swallow errors, so not-found and unreachable look alike).
+  handler: async (ctx, args): Promise<{ updated: boolean; matched: boolean }> => {
     const identity = await ctx.auth.getUserIdentity()
     if (!identity) throw new Error("Not authenticated")
     const book = await ctx.runQuery(internal.shelfAdd._getBook, { id: args.id })
     if (!book || book.userId !== identity.tokenIdentifier) throw new Error("Book not found")
-    await ctx.runAction(internal.shelfAdd.enrichBookById, { id: args.id })
+    const { matched } = await ctx.runAction(internal.shelfAdd.enrichBookById, { id: args.id, refresh: true })
     const after = await ctx.runQuery(internal.shelfAdd._getBook, { id: args.id })
     const snapshot = (b: typeof book | null): string =>
       JSON.stringify(
@@ -320,7 +322,7 @@ export const refetchMetadata = action({
           b.categories, b.subjects, b.averageRating, b.ratingsCount, b.hasEmbedding,
         ],
       )
-    return { updated: snapshot(book) !== snapshot(after) }
+    return { updated: snapshot(book) !== snapshot(after), matched }
   },
 })
 
